@@ -50,7 +50,7 @@ function StatCard({
         />
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-semibold">{value}</p>
+        <p className="font-mono text-2xl font-medium tabular-nums">{value}</p>
       </CardContent>
     </Card>
   );
@@ -215,7 +215,9 @@ function OrdersPageContent() {
                           {order.placed_by === "buyer_chat" ? "You (chat)" : "External agent"}
                         </TableCell>
                         <TableCell>{order.quantity}</TableCell>
-                        <TableCell>₹{(order.amount_paise / 100).toLocaleString("en-IN")}</TableCell>
+                        <TableCell className="font-mono tabular-nums">
+                          ₹{(order.amount_paise / 100).toLocaleString("en-IN")}
+                        </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2">

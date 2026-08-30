@@ -44,7 +44,9 @@ export function ProductResultCard({
         {product.merchant_name}
       </span>
       <div className="mt-1 flex items-baseline gap-2">
-        <span className="text-base font-semibold">₹{product.price_rupees.toLocaleString("en-IN")}</span>
+        <span className="font-mono text-base font-medium tabular-nums">
+          ₹{product.price_rupees.toLocaleString("en-IN")}
+        </span>
         <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
           <StarIcon className="size-3 fill-warning text-warning" />
           {product.rating.toFixed(1)}

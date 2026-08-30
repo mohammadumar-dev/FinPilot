@@ -33,10 +33,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               className="data-[slot=sidebar-menu-button]:p-1.5!"
               render={<Link href="/dashboard" />}
             >
-              <span className="flex size-6 items-center justify-center rounded-lg bg-brand text-brand-foreground">
+              <span className="flex size-6 items-center justify-center rounded-md bg-brand text-brand-foreground">
                 <SparkleIcon className="size-3.5!" />
               </span>
-              <span className="text-base font-semibold">FinPilot</span>
+              <span className="font-heading text-base italic">FinPilot</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

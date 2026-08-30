@@ -37,7 +37,9 @@ export function MerchantProductCard({ product }: { product: Product }) {
         <p className="line-clamp-2 text-xs text-muted-foreground">{product.description}</p>
       )}
       <div className="mt-1 flex items-baseline gap-2">
-        <span className="text-base font-semibold">₹{(product.price_paise / 100).toLocaleString("en-IN")}</span>
+        <span className="font-mono text-base font-medium tabular-nums">
+          ₹{(product.price_paise / 100).toLocaleString("en-IN")}
+        </span>
         <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
           <StarIcon className="size-3 fill-warning text-warning" />
           {product.rating.toFixed(1)}

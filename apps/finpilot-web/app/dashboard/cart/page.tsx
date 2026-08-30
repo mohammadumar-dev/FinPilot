@@ -125,10 +125,10 @@ export default function CartPage() {
                       <div className="mt-auto flex items-center justify-between gap-2">
                         <AddToCartControl productId={item.product_id} />
                         <div className="text-right">
-                          <span className="text-sm font-semibold">
+                          <span className="font-mono text-sm font-medium tabular-nums">
                             ₹{(item.line_total_paise / 100).toLocaleString("en-IN")}
                           </span>
-                          <span className="block text-xs text-muted-foreground">
+                          <span className="block font-mono text-xs tabular-nums text-muted-foreground">
                             ₹{item.price_rupees.toLocaleString("en-IN")} each
                           </span>
                         </div>
@@ -142,7 +142,7 @@ export default function CartPage() {
             <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-4">
               <div>
                 <p className="text-xs text-muted-foreground">Total</p>
-                <p className="text-lg font-semibold">₹{(total / 100).toLocaleString("en-IN")}</p>
+                <p className="font-mono text-lg font-medium tabular-nums">₹{(total / 100).toLocaleString("en-IN")}</p>
               </div>
               <Button
                 size="lg"

@@ -80,7 +80,7 @@ export default function ProductDetailPage() {
 
             <div className="flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
-                <h2 className="text-xl font-semibold leading-snug">
+                <h2 className="font-heading text-xl leading-snug">
                   {product.name}
                   {product.variant_label && (
                     <span className="ml-1.5 text-base font-normal text-muted-foreground">
@@ -104,7 +104,9 @@ export default function ProductDetailPage() {
               </Link>
 
               <div className="flex items-baseline gap-3">
-                <span className="text-2xl font-semibold">₹{product.price_rupees.toLocaleString("en-IN")}</span>
+                <span className="font-mono text-2xl font-medium tabular-nums">
+                  ₹{product.price_rupees.toLocaleString("en-IN")}
+                </span>
                 <span className="flex items-center gap-1 text-sm text-muted-foreground">
                   <StarIcon className="size-3.5 fill-warning text-warning" />
                   {product.rating.toFixed(1)}

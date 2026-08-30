@@ -47,12 +47,12 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-svh w-full items-center justify-center bg-muted/30 p-4">
       <div className="flex w-full max-w-sm flex-col gap-6">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-brand text-brand-foreground">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex size-11 items-center justify-center rounded-xl bg-brand text-brand-foreground">
             <SparkleIcon className="size-5" />
           </div>
-          <h1 className="text-lg font-semibold tracking-tight">FinPilot</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="font-heading text-2xl italic">FinPilot</h1>
+          <p className="text-sm text-balance text-muted-foreground">
             Tell it what you want. It finds the best option and buys it for you.
           </p>
         </div>

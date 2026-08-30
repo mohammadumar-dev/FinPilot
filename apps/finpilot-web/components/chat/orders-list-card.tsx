@@ -24,7 +24,8 @@ export function OrdersListCard({ orders }: { orders: ListOrdersItem[] }) {
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{order.product_name}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {order.merchant_name} · ₹{order.amount_rupees.toLocaleString("en-IN")} ·{" "}
+              {order.merchant_name} ·{" "}
+              <span className="font-mono tabular-nums">₹{order.amount_rupees.toLocaleString("en-IN")}</span> ·{" "}
               {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
             </p>
           </div>
