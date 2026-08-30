@@ -3,37 +3,53 @@ Core (catalog_service / order_service) — the LLM never touches the DB or
 Razorpay directly, it only ever sees what these tools return."""
 
 import json
+import logging
 import re
 import uuid
 
-from groq import Groq
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.models.conversation import Conversation, Message
 from app.models.merchant import Merchant
-from app.services import catalog_service
+from app.services import catalog_service, llm_gateway
 from app.services.audit_service import log_audit
 from app.services.order_service import OrderError, check_payment_status, create_order_for_chat, list_orders_for_user
 
-MAX_TOOL_ITERATIONS = 5
+logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are the FinPilot shopping assistant. You have access to a single marketplace catalog spanning every merchant on the platform (apparel, electronics, books, and more) — the buyer can shop across all of them in this one conversation, the same way they'd shop different stores in one Amazon-style marketplace.
+# Not every model reliably batches multiple tool calls into one turn (some
+# of the fallback chain's smaller models call search_catalog once per item,
+# sequentially) — a 5-item shopping list can burn 5 iterations on search
+# alone before a 6th is even available to compose the reply. Generous
+# headroom here avoids "Sorry, I'm having trouble" on a legitimate multi-item
+# request; each iteration is one LLM call, so the cap still bounds cost/time.
+MAX_TOOL_ITERATIONS = 12
+MAX_SEARCH_LIMIT = 20
+
+SYSTEM_PROMPT = """You are the FinPilot shopping assistant. You have access to a single marketplace catalog spanning every merchant on the platform (footwear, apparel, computer accessories, mobiles/laptops, groceries, books, and more) — the buyer can shop across all of them in this one conversation, the same way they'd shop different stores in one Amazon-style marketplace.
 
 Hard rules, not suggestions:
 - Never call create_order without an explicit, unambiguous confirmation message from the buyer in this conversation (e.g. "yes", "confirm", "go ahead", "buy it"). If you are not sure the buyer has confirmed, ask them to confirm first.
 - Never suggest or recommend a product outside the buyer's stated budget.
-- Always show product name, price (in rupees), and rating before asking the buyer to confirm a purchase. When it's not obvious, also mention which store/merchant a product is from.
+- Always show product name, price (in rupees), and rating before asking the buyer to confirm a purchase. If the buyer wants more than one unit ("two packets", "3 of these"), show quantity × unit price = total, and pass that quantity to create_order — never silently assume quantity 1 when they stated a number. When it's not obvious, also mention which store/merchant a product is from.
 - Never invent a product, SKU, price, merchant, or product_id — only use what search_catalog or get_product_detail returned.
-- If the buyer's request is too vague (e.g. "get me something nice"), ask one clarifying question instead of guessing.
+- If the buyer's request is too vague (e.g. "get me something nice"), ask one clarifying question instead of guessing — but only once. If the buyer then declines to narrow it down (e.g. "no budget", "doesn't matter", "just show me what's available", "any brand is fine"), that is your answer: proceed immediately with search_catalog for every item using no filters. Never ask the same clarifying question again in the same conversation.
+- No budget/size/brand/variant stated (whether from the start, or after the buyer declined to specify one): do not silently pick a single "best" product on the buyer's behalf — "best" is subjective without knowing what they actually want. Call search_catalog for each item with the default limit and let its top-rated matches (already ranked best-first) become the shortlist shown as cards. Your reply should point at the shortlist ("here are the top-rated options for each" ), not declare one item the winner, unless the buyer asks you to pick or narrow it down further.
 - If search_catalog returns an empty results list, do NOT silently retry it over and over with slightly different wording — try at most one reasonable rephrase (e.g. drop a category guess, broaden the price), and if that's still empty, tell the buyer plainly that nothing matched and ask what else to try. Never respond with a generic "I'm having trouble" message when a specific empty-search reply is possible.
+
+Handling how many results to show — be precise, not padded:
+- search_catalog takes a `limit` — set it to what the buyer actually asked for (e.g. "top 10" -> limit=10, "find a few" -> leave it at the default). Trust the results it returns; it already filters to genuinely matching products, ranked best first.
+- If the buyer asked for N and fewer than N genuinely match (e.g. only 3 pairs of shoes exist under their budget), say the real count plainly — "Only 3 running shoes are available under ₹5,000 — here they are" — and show exactly those. NEVER top up the list with unrelated products (a different category, a different kind of item) just to reach N; showing fewer correct results is always better than padding with wrong ones.
+- If the buyer names several distinct items in one message — a shopping list, or "find me X and Y" — call search_catalog once per item (you can make multiple tool calls in the same turn) and address each one in your reply, rather than only handling the first or merging them into a single unrelated query.
+- If the buyer states a size or weight (e.g. "1kg rice", "half kg dal"), match it against the search result whose variant_label equals that size — variant_group groups the different sizes of the same item. If the exact size isn't available, say what sizes are, instead of guessing or substituting silently.
+
 - After create_order succeeds, tell the buyer the order id and that you'll check payment status; call check_payment_status if asked or after creating the order.
 - If the buyer asks to see their orders, order history, or "what have I bought", call list_orders — never guess or claim you can't do it.
 - If create_order fails with duplicate_order or already_purchased, the tool result includes the existing order_id and razorpay_payment_link — use them directly instead of asking the buyer for an order id they never had and don't know. Never ask the buyer to supply an order_id you already have or could get via list_orders.
 - create_order, check_payment_status, and list_orders all return razorpay_payment_link for any order that's still created/pending. If the buyer asks for the payment link, to "checkout", to "drop the link", or how to pay, and you don't already have it in this conversation, call check_payment_status (or list_orders if you don't have the order_id either) to get it, then share the exact URL. Never say you don't have a payment link without first calling one of those tools — you very likely do.
 - "I made the payment" from the buyer is not proof of payment — always call check_payment_status to verify before telling them it's confirmed.
 - Keep replies concise and friendly.
-- The UI already renders search_catalog results as product cards (name, price, rating, store, a "Buy this" button), create_order/duplicate results as an order card, and list_orders results as an order list (each row has its own "View" action and a "Pay now" link when applicable). Never restate that same information — no markdown tables, no bulleted or numbered lists, no re-listing product names/prices/statuses/payment links one by one, no dumping every payment link in the reply. Reply with exactly one short conversational sentence pointing at what's already shown (e.g. "Here's what I found — the second one has the best rating for your budget. Want me to order it?" or "Here are your recent orders — most are still awaiting payment."). You may use **bold** for a single product name inline in that sentence."""
+- The UI already renders search_catalog results as product cards (image, name, price, rating, store, a "Buy this" button), create_order/duplicate results as an order card, and list_orders results as an order list (each row has its own "View" action and a "Pay now" link when applicable). Never restate that same information — no markdown tables, no bulleted or numbered lists, no re-listing product names/prices/statuses/payment links one by one, no dumping every payment link in the reply. Reply with exactly one short conversational sentence pointing at what's already shown (e.g. "Here's what I found — the second one has the best rating for your budget. Want me to order it?" or "Here are your recent orders — most are still awaiting payment."). You may use **bold** for a single product name inline in that sentence."""
 
 def _search_catalog_tool(categories: list[str]) -> dict:
     return {
@@ -58,6 +74,16 @@ def _search_catalog_tool(categories: list[str]) -> dict:
                             "nothing fits what the buyer asked for, omit/null this and rely on `query` text "
                             "instead. Never invent a category word that isn't in the list — e.g. for "
                             "'perfume' use 'fragrance', for 'sneakers' use 'footwear'."
+                        ),
+                    },
+                    "limit": {
+                        "type": ["integer", "null"],
+                        "description": (
+                            "How many results to return — match what the buyer asked for, e.g. 10 for "
+                            "'top 10' or 'find 10 shoes'. Omit for a default of 5. Capped at "
+                            f"{MAX_SEARCH_LIMIT}. This does not change what counts as a match — if fewer "
+                            "than `limit` products genuinely match, fewer are returned; never treated as a "
+                            "target count to pad out."
                         ),
                     },
                 },
@@ -87,7 +113,13 @@ _STATIC_TOOLS = [
             "description": "Create an order for a product the buyer has explicitly confirmed they want to buy. Only call after explicit buyer confirmation.",
             "parameters": {
                 "type": "object",
-                "properties": {"product_id": {"type": "string"}},
+                "properties": {
+                    "product_id": {"type": "string"},
+                    "quantity": {
+                        "type": ["integer", "null"],
+                        "description": "Number of units, e.g. 2 for 'two packets'. Omit for 1.",
+                    },
+                },
                 "required": ["product_id"],
             },
         },
@@ -127,10 +159,6 @@ _AFFIRMATIVE_RE = re.compile(
     r"\b(yes|yeah|yep|yup|confirm(ed)?|go ahead|do it|buy it|place (the )?order|sure|okay|ok|sounds good|let'?s do it)\b",
     re.IGNORECASE,
 )
-
-
-def _client() -> Groq:
-    return Groq(api_key=settings.GROQ_API_KEY)
 
 
 def _load_history(db: Session, conversation_id: uuid.UUID) -> list[dict]:
@@ -208,11 +236,14 @@ def _execute_tool(
     if name == "search_catalog":
         max_price = arguments.get("max_price")
         max_price_paise = int(max_price) * 100 if max_price else None
+        requested_limit = arguments.get("limit")
+        limit = max(1, min(int(requested_limit), MAX_SEARCH_LIMIT)) if requested_limit else 5
         results = catalog_service.search_catalog(
             db,
             query=arguments.get("query", ""),
             max_price_paise=max_price_paise,
             category=arguments.get("category"),
+            limit=limit,
         )
         log_audit(
             db,
@@ -241,6 +272,7 @@ def _execute_tool(
 
     if name == "create_order":
         product_id = arguments.get("product_id", "")
+        quantity = int(arguments.get("quantity") or 1)
 
         if not _AFFIRMATIVE_RE.search(latest_user_text) or not _product_was_shown(db, conversation.id, product_id):
             log_audit(
@@ -255,7 +287,7 @@ def _execute_tool(
             return {"error": "confirmation_required", "message": "Ask the buyer to explicitly confirm before ordering."}
 
         try:
-            order = create_order_for_chat(db, user_id, product_id)
+            order = create_order_for_chat(db, user_id, product_id, quantity=quantity)
         except OrderError as e:
             log_audit(
                 db,
@@ -272,6 +304,7 @@ def _execute_tool(
         result = {
             "order_id": str(order.id),
             "status": order.status,
+            "quantity": order.quantity,
             "amount_paise": order.amount_paise,
             "amount_rupees": round(order.amount_paise / 100, 2),
             "merchant_name": merchant.name if merchant else None,
@@ -349,17 +382,22 @@ def run_agent_turn(
     db.flush()
 
     messages = _load_history(db, conversation.id)
-    client = _client()
     tools = _build_tools(db)
 
     for _ in range(MAX_TOOL_ITERATIONS):
-        response = client.chat.completions.create(
-            model=settings.GROQ_MODEL,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            temperature=0.3,
-        )
+        try:
+            response, model_used = llm_gateway.chat_completion_with_fallback(
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                temperature=0.3,
+            )
+        except Exception:
+            # Every model in the fallback chain is rate-limited or erroring —
+            # degrade to the friendly reply below instead of a raw 500.
+            logger.exception("All Groq models in the fallback chain failed for conversation %s", conversation.id)
+            break
+        logger.info("agent turn served by model=%s", model_used)
         choice = response.choices[0].message
 
         if not choice.tool_calls:

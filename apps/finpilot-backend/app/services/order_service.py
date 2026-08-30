@@ -43,6 +43,7 @@ def create_order_for_chat(
     db: Session,
     user_id: uuid.UUID,
     product_id: str,
+    quantity: int = 1,
 ) -> Order:
     """Chats are global-scoped across every merchant's catalog, so the
     merchant is derived from the product being ordered, not from the
@@ -51,6 +52,9 @@ def create_order_for_chat(
         pid = uuid.UUID(product_id)
     except ValueError:
         raise OrderError("product_not_found", "product_id is not a valid identifier")
+
+    if quantity < 1:
+        raise OrderError("invalid_quantity", "quantity must be at least 1")
 
     product = db.query(Product).filter(Product.id == pid, Product.is_active.is_(True)).one_or_none()
     if product is None:
@@ -83,7 +87,9 @@ def create_order_for_chat(
 
     # Re-read the current price server-side — never trust anything the agent
     # (or a stale earlier turn in the conversation) claims about the price.
-    amount_paise = product.price_paise
+    # Total is unit price * quantity; quantity is buyer-stated (e.g. "two
+    # packets"), never trusted for price itself.
+    amount_paise = product.price_paise * quantity
     description = f"{product.name} — {merchant.name}" if merchant else product.name
     payment = create_razorpay_order(amount_paise, receipt=_new_reference_id(), description=description)
 
@@ -93,6 +99,7 @@ def create_order_for_chat(
         # re-inserted as a new row (unique index) — reactivate it instead,
         # which is also the more honest history: one retried purchase, not a
         # pile of duplicate failed rows for the same product.
+        existing.quantity = quantity
         existing.amount_paise = amount_paise
         existing.razorpay_order_id = payment["razorpay_order_id"]
         existing.payment_link = payment["payment_link"]
@@ -106,6 +113,7 @@ def create_order_for_chat(
         user_id=user_id,
         merchant_id=merchant_id,
         product_id=product.id,
+        quantity=quantity,
         amount_paise=amount_paise,
         razorpay_order_id=payment["razorpay_order_id"],
         payment_link=payment["payment_link"],
@@ -158,6 +166,7 @@ def list_orders_for_user(db: Session, user_id: uuid.UUID, limit: int = 10) -> li
             "order_id": str(order.id),
             "product_name": product_name,
             "merchant_name": merchant_name,
+            "quantity": order.quantity,
             "amount_rupees": round(order.amount_paise / 100, 2),
             "status": order.status,
             "failure_reason": order.failure_reason,
@@ -189,11 +198,15 @@ def create_order_for_agent(
     agent_client: AgentClient,
     product_id: str,
     idempotency_key: str,
+    quantity: int = 1,
 ) -> Order:
     try:
         pid = uuid.UUID(product_id)
     except ValueError:
         raise OrderError("product_not_found", "product_id is not a valid identifier")
+
+    if quantity < 1:
+        raise OrderError("invalid_quantity", "quantity must be at least 1")
 
     product = (
         db.query(Product)
@@ -216,7 +229,7 @@ def create_order_for_agent(
         raise OrderError("duplicate_order", "This idempotency_key was already used for a different product")
 
     # Re-read the current price server-side — never trust a price the agent claims.
-    amount_paise = product.price_paise
+    amount_paise = product.price_paise * quantity
 
     if amount_paise > agent_client.max_order_amount_paise:
         raise OrderError(
@@ -242,6 +255,7 @@ def create_order_for_agent(
         user_id=None,  # no human buyer session — this order was placed by an external agent
         merchant_id=agent_client.merchant_id,
         product_id=product.id,
+        quantity=quantity,
         amount_paise=amount_paise,
         razorpay_order_id=payment["razorpay_order_id"],
         payment_link=payment["payment_link"],
