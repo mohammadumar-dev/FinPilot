@@ -1,0 +1,16 @@
+# Backend (Python)
+apps/finpilot-backend/.venv/
+apps/finpilot-backend/.env
+apps/finpilot-backend/__pycache__/
+**/__pycache__/
+*.pyc
+
+# Frontend (Node/Next.js)
+apps/finpilot-web/node_modules/
+apps/finpilot-web/.next/
+apps/finpilot-web/.env.local
+apps/finpilot-web/.env*.local
+
+# OS/editor
+.DS_Store
+.vscode/
