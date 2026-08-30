@@ -1,32 +1,56 @@
 """Idempotent seed script for FinPilot.
 
 Seeds:
-  - 13 merchants spanning apparel, electronics, books, grocery, home, beauty,
-    sports, toys, pets, kitchenware, auto, fragrance, and fashion accessories
-  - 10 products per merchant (130 total)
+  - 15 merchants, each selling one clear category (footwear, apparel,
+    computer accessories, mobiles/laptops, books, groceries, home, beauty,
+    sports, toys, pets, kitchenware, auto, fragrance, fashion accessories)
+  - ~160 products across those merchants, incl. weight/size variants for
+    grocery staples (rice, dal, oil, atta) grouped via variant_group
   - 1 agent_client per merchant, with a generated API key printed once to stdout
-  - 14 demo users (1 buyer, 13 merchant admins), all with password Demo@1234
+  - 16 demo users (1 buyer, 15 merchant admins), all with password Demo@1234
+  - Product images: for any product whose SKU has a matching file in
+    public/product-images/, converts it to WebP and stores it (see
+    app/seed/images.py). Missing files just leave the product imageless.
 
 Safe to re-run: existing rows (matched by unique business key — merchant name,
 product SKU, agent_client name, user email) are left untouched.
 
 Run with:
     .venv\\Scripts\\python.exe -m app.seed.seed_data
+
+Pass --reset to wipe the catalog (orders, audit log, agent_clients, products,
+merchant_admin users, merchants — NOT the buyer account or chat history) and
+reseed fresh. Needed whenever the taxonomy itself changes (products moving
+between merchants), since idempotent skip-by-business-key can't "move" a row
+that already exists under the old structure:
+    .venv\\Scripts\\python.exe -m app.seed.seed_data --reset
 """
 
+import re
 import secrets
+import sys
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, pwd_context
 from app.models import Merchant, Product, AgentClient, User
 from app.db.session import SessionLocal
+from app.seed.images import load_product_image
 
 DEMO_PASSWORD = "Demo@1234"
 
+
+def _slugify(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "merchant"
+
+
 MERCHANTS = [
+    {"key": "stepforward", "name": "StepForward Footwear"},
     {"key": "threadline", "name": "Threadline Apparel"},
-    {"key": "circuithub", "name": "CircuitHub Electronics"},
+    {"key": "circuithub", "name": "CircuitHub Computer Accessories"},
+    {"key": "novatech", "name": "NovaTech Mobiles & Laptops"},
     {"key": "pageturner", "name": "PageTurner Books"},
     {"key": "greenbasket", "name": "GreenBasket Grocery"},
     {"key": "homenest", "name": "HomeNest Furnishings"},
@@ -39,11 +63,15 @@ MERCHANTS = [
     {"key": "aromahome", "name": "AromaHome Fragrances"},
     {"key": "urbanstyle", "name": "UrbanStyle Accessories"},
 ]
+for _m in MERCHANTS:
+    _m["slug"] = _slugify(_m["name"])
+
 
 PRODUCTS_BY_MERCHANT = {
-    "threadline": [
+    # --- Footwear only ---
+    "stepforward": [
         {
-            "sku": "TL-SHOE-MEN-RUN-PRO",
+            "sku": "SF-SHOE-MEN-RUN-PRO",
             "name": "Men's Running Shoes Pro",
             "description": "Lightweight men's running shoe built for daily training miles.",
             "price_paise": 189900,
@@ -52,7 +80,7 @@ PRODUCTS_BY_MERCHANT = {
             "attributes": {"color": "black", "size_range": "7-11", "gender": "men"},
         },
         {
-            "sku": "TL-SHOE-WMN-RUN-AIR",
+            "sku": "SF-SHOE-WMN-RUN-AIR",
             "name": "Women's Running Shoes Air",
             "description": "Breathable women's running shoe with air cushioning.",
             "price_paise": 159900,
@@ -61,7 +89,7 @@ PRODUCTS_BY_MERCHANT = {
             "attributes": {"color": "pink", "size_range": "5-9", "gender": "women"},
         },
         {
-            "sku": "TL-SHOE-TRAIL-X",
+            "sku": "SF-SHOE-TRAIL-X",
             "name": "Trail Running Shoes X",
             "description": "Rugged trail runner with reinforced grip for off-road terrain.",
             "price_paise": 249900,
@@ -69,6 +97,72 @@ PRODUCTS_BY_MERCHANT = {
             "category": "footwear",
             "attributes": {"color": "grey", "terrain": "trail"},
         },
+        {
+            "sku": "SF-SNEAKERS-CANVAS",
+            "name": "Canvas Sneakers",
+            "description": "Casual canvas sneakers for everyday wear.",
+            "price_paise": 109900,
+            "rating": 4.0,
+            "category": "footwear",
+            "attributes": {"color": "white", "style": "casual"},
+        },
+        {
+            "sku": "SF-SHOE-FORMAL-LEATHER-MEN",
+            "name": "Formal Leather Shoes Men",
+            "description": "Handcrafted leather formal shoes for office and occasions.",
+            "price_paise": 219900,
+            "rating": 4.4,
+            "category": "footwear",
+            "attributes": {"color": "black", "material": "leather", "gender": "men"},
+        },
+        {
+            "sku": "SF-SANDALS-SPORTS",
+            "name": "Sports Sandals",
+            "description": "Adjustable sports sandals with a cushioned footbed for outdoor comfort.",
+            "price_paise": 89900,
+            "rating": 4.1,
+            "category": "footwear",
+            "attributes": {"color": "navy", "style": "sports"},
+        },
+        {
+            "sku": "SF-SHOE-KIDS-SCHOOL",
+            "name": "Kids School Shoes",
+            "description": "Durable, slip-resistant school shoes for everyday wear.",
+            "price_paise": 79900,
+            "rating": 4.3,
+            "category": "footwear",
+            "attributes": {"age_range": "5-12", "style": "school"},
+        },
+        {
+            "sku": "SF-BOOTS-HIKING",
+            "name": "Hiking Boots",
+            "description": "Waterproof hiking boots with ankle support for rugged trails.",
+            "price_paise": 269900,
+            "rating": 4.5,
+            "category": "footwear",
+            "attributes": {"color": "brown", "waterproof": True},
+        },
+        {
+            "sku": "SF-LOAFERS-SLIPON",
+            "name": "Slip-On Loafers",
+            "description": "Comfort-fit slip-on loafers for casual and semi-formal wear.",
+            "price_paise": 149900,
+            "rating": 4.2,
+            "category": "footwear",
+            "attributes": {"color": "tan", "style": "casual"},
+        },
+        {
+            "sku": "SF-FLATS-BALLET-WOMEN",
+            "name": "Women's Ballet Flats",
+            "description": "Lightweight ballet flats with a soft, flexible sole.",
+            "price_paise": 99900,
+            "rating": 4.3,
+            "category": "footwear",
+            "attributes": {"color": "pink", "gender": "women"},
+        },
+    ],
+    # --- Apparel only, no footwear ---
+    "threadline": [
         {
             "sku": "TL-TSHIRT-COTTON-CLASSIC",
             "name": "Classic Cotton T-Shirt",
@@ -124,43 +218,44 @@ PRODUCTS_BY_MERCHANT = {
             "attributes": {"color": "red"},
         },
         {
-            "sku": "TL-SNEAKERS-CANVAS",
-            "name": "Canvas Sneakers",
-            "description": "Casual canvas sneakers for everyday wear.",
-            "price_paise": 109900,
+            "sku": "TL-POLO-COTTON",
+            "name": "Classic Polo T-Shirt",
+            "description": "Breathable cotton-pique polo for smart-casual wear.",
+            "price_paise": 69900,
+            "rating": 4.2,
+            "category": "tops",
+            "attributes": {"color": "navy", "material": "cotton-pique"},
+        },
+        {
+            "sku": "TL-HOODIE-FLEECE",
+            "name": "Fleece Hoodie",
+            "description": "Soft fleece-lined hoodie with a kangaroo pocket.",
+            "price_paise": 119900,
+            "rating": 4.4,
+            "category": "outerwear",
+            "attributes": {"color": "grey", "material": "fleece"},
+        },
+        {
+            "sku": "TL-SHORTS-CARGO",
+            "name": "Cargo Shorts",
+            "description": "Multi-pocket cargo shorts built for everyday utility.",
+            "price_paise": 79900,
+            "rating": 4.1,
+            "category": "bottoms",
+            "attributes": {"color": "khaki", "fit": "regular"},
+        },
+        {
+            "sku": "TL-TEE-GRAPHIC-PRINT",
+            "name": "Printed Graphic Tee",
+            "description": "Soft cotton tee with an original screen-printed graphic.",
+            "price_paise": 54900,
             "rating": 4.0,
-            "category": "footwear",
-            "attributes": {"color": "white", "style": "casual"},
+            "category": "tops",
+            "attributes": {"color": "black", "material": "cotton"},
         },
     ],
+    # --- Computer / desk accessories only ---
     "circuithub": [
-        {
-            "sku": "CH-EARBUDS-BT-PRO",
-            "name": "Wireless Bluetooth Earbuds Pro",
-            "description": "True wireless earbuds with active noise cancellation.",
-            "price_paise": 199900,
-            "rating": 4.4,
-            "category": "audio",
-            "attributes": {"battery_hours": 24, "anc": True},
-        },
-        {
-            "sku": "CH-HEADPHONES-X200",
-            "name": "Over-Ear Headphones X200",
-            "description": "Over-ear headphones with deep bass and long battery life.",
-            "price_paise": 299900,
-            "rating": 4.2,
-            "category": "audio",
-            "attributes": {"battery_hours": 30, "anc": False},
-        },
-        {
-            "sku": "CH-SMARTWATCH-FIT3",
-            "name": "Smartwatch Fit 3",
-            "description": "Fitness smartwatch with GPS and 7-day battery.",
-            "price_paise": 349900,
-            "rating": 4.3,
-            "category": "wearables",
-            "attributes": {"battery_days": 7, "gps": True},
-        },
         {
             "sku": "CH-POWERBANK-20K",
             "name": "Portable Power Bank 20000mAh",
@@ -198,15 +293,6 @@ PRODUCTS_BY_MERCHANT = {
             "attributes": {"dpi": 1600, "wireless": True},
         },
         {
-            "sku": "CH-SPEAKER-BOOM-MINI",
-            "name": "Bluetooth Speaker Boom Mini",
-            "description": "Compact waterproof Bluetooth speaker for outdoor use.",
-            "price_paise": 129900,
-            "rating": 4.2,
-            "category": "audio",
-            "attributes": {"waterproof": True, "battery_hours": 12},
-        },
-        {
             "sku": "CH-WEBCAM-1080P",
             "name": "1080p Webcam HD",
             "description": "Full HD webcam with autofocus for calls and streaming.",
@@ -223,6 +309,135 @@ PRODUCTS_BY_MERCHANT = {
             "rating": 4.3,
             "category": "accessories",
             "attributes": {"material": "aluminum", "adjustable": True},
+        },
+        {
+            "sku": "CH-HUB-USBC-7IN1",
+            "name": "USB-C Hub 7-in-1",
+            "description": "7-in-1 USB-C hub with HDMI, SD card reader, and 3 USB-A ports.",
+            "price_paise": 149900,
+            "rating": 4.4,
+            "category": "computer-accessories",
+            "attributes": {"ports": 7},
+        },
+        {
+            "sku": "CH-SSD-EXTERNAL-1TB",
+            "name": "External SSD 1TB",
+            "description": "Pocket-sized 1TB external SSD with USB 3.2 transfer speeds.",
+            "price_paise": 599900,
+            "rating": 4.6,
+            "category": "storage",
+            "attributes": {"capacity_gb": 1000},
+        },
+        {
+            "sku": "CH-MONITORARM-SINGLE",
+            "name": "Monitor Arm Mount",
+            "description": "Gas-spring monitor arm for full-motion desk mounting.",
+            "price_paise": 199900,
+            "rating": 4.3,
+            "category": "computer-accessories",
+            "attributes": {"max_size_in": 32},
+        },
+        {
+            "sku": "CH-CHARGEPAD-WIRELESS",
+            "name": "Wireless Charging Pad",
+            "description": "10W fast wireless charging pad for Qi-enabled devices.",
+            "price_paise": 79900,
+            "rating": 4.1,
+            "category": "computer-accessories",
+            "attributes": {"wattage": 10},
+        },
+    ],
+    # --- Mobiles, laptops, and mobile-adjacent tech ---
+    "novatech": [
+        {
+            "sku": "NT-SMARTWATCH-FIT3",
+            "name": "Smartwatch Fit 3",
+            "description": "Fitness smartwatch with GPS and 7-day battery.",
+            "price_paise": 349900,
+            "rating": 4.3,
+            "category": "wearables",
+            "attributes": {"battery_days": 7, "gps": True},
+        },
+        {
+            "sku": "NT-EARBUDS-BT-PRO",
+            "name": "Wireless Bluetooth Earbuds Pro",
+            "description": "True wireless earbuds with active noise cancellation.",
+            "price_paise": 199900,
+            "rating": 4.4,
+            "category": "audio",
+            "attributes": {"battery_hours": 24, "anc": True},
+        },
+        {
+            "sku": "NT-HEADPHONES-X200",
+            "name": "Over-Ear Headphones X200",
+            "description": "Over-ear headphones with deep bass and long battery life.",
+            "price_paise": 299900,
+            "rating": 4.2,
+            "category": "audio",
+            "attributes": {"battery_hours": 30, "anc": False},
+        },
+        {
+            "sku": "NT-SPEAKER-BOOM-MINI",
+            "name": "Bluetooth Speaker Boom Mini",
+            "description": "Compact waterproof Bluetooth speaker for outdoor use.",
+            "price_paise": 129900,
+            "rating": 4.2,
+            "category": "audio",
+            "attributes": {"waterproof": True, "battery_hours": 12},
+        },
+        {
+            "sku": "NT-PHONE-BUDGET-128GB",
+            "name": "Smartphone 128GB",
+            "description": "6.5-inch display smartphone with a 50MP camera and all-day battery.",
+            "price_paise": 1499900,
+            "rating": 4.2,
+            "category": "smartphones",
+            "attributes": {"storage_gb": 128, "ram_gb": 6},
+        },
+        {
+            "sku": "NT-PHONE-PRO-256GB",
+            "name": "Smartphone Pro 256GB",
+            "description": "Flagship smartphone with a triple-camera system and 120Hz display.",
+            "price_paise": 3499900,
+            "rating": 4.6,
+            "category": "smartphones",
+            "attributes": {"storage_gb": 256, "ram_gb": 12},
+        },
+        {
+            "sku": "NT-LAPTOP-ULTRABOOK-14",
+            "name": "Laptop Ultrabook 14-inch",
+            "description": "Slim, lightweight ultrabook with all-day battery life for work on the go.",
+            "price_paise": 5999900,
+            "rating": 4.5,
+            "category": "laptops",
+            "attributes": {"screen_in": 14, "ram_gb": 16, "storage_gb": 512},
+        },
+        {
+            "sku": "NT-LAPTOP-GAMING-15",
+            "name": "Laptop Gaming 15.6-inch",
+            "description": "High-refresh gaming laptop with a dedicated GPU for demanding titles.",
+            "price_paise": 8999900,
+            "rating": 4.4,
+            "category": "laptops",
+            "attributes": {"screen_in": 15.6, "ram_gb": 16, "storage_gb": 1000},
+        },
+        {
+            "sku": "NT-TABLET-10IN",
+            "name": "Tablet 10.9-inch",
+            "description": "10.9-inch tablet with stylus support, ideal for notes and streaming.",
+            "price_paise": 2999900,
+            "rating": 4.3,
+            "category": "tablets",
+            "attributes": {"screen_in": 10.9, "storage_gb": 128},
+        },
+        {
+            "sku": "NT-CHARGESTAND-WIRELESS",
+            "name": "Wireless Charging Stand",
+            "description": "2-in-1 wireless charging stand for phone and earbuds together.",
+            "price_paise": 129900,
+            "rating": 4.2,
+            "category": "accessories",
+            "attributes": {"wattage": 15},
         },
     ],
     "pageturner": [
@@ -317,7 +532,30 @@ PRODUCTS_BY_MERCHANT = {
             "attributes": {"pages": 192, "cover": "hardcover"},
         },
     ],
+    # --- Groceries, with weight/size variants for staples ---
     "greenbasket": [
+        {
+            "sku": "GB-RICE-BASMATI-500G",
+            "name": "Premium Basmati Rice 500g",
+            "description": "Long-grain aged basmati rice, aromatic and fluffy when cooked.",
+            "price_paise": 7900,
+            "rating": 4.5,
+            "category": "staples",
+            "attributes": {"brand": "Golden Fields", "weight_kg": 0.5},
+            "variant_group": "GB-RICE-BASMATI",
+            "variant_label": "500g",
+        },
+        {
+            "sku": "GB-RICE-BASMATI-1KG",
+            "name": "Premium Basmati Rice 1kg",
+            "description": "Long-grain aged basmati rice, aromatic and fluffy when cooked.",
+            "price_paise": 14900,
+            "rating": 4.5,
+            "category": "staples",
+            "attributes": {"brand": "Golden Fields", "weight_kg": 1},
+            "variant_group": "GB-RICE-BASMATI",
+            "variant_label": "1kg",
+        },
         {
             "sku": "GB-RICE-BASMATI-5KG",
             "name": "Premium Basmati Rice 5kg",
@@ -326,6 +564,19 @@ PRODUCTS_BY_MERCHANT = {
             "rating": 4.5,
             "category": "staples",
             "attributes": {"brand": "Golden Fields", "weight_kg": 5},
+            "variant_group": "GB-RICE-BASMATI",
+            "variant_label": "5kg",
+        },
+        {
+            "sku": "GB-OIL-SUNFLOWER-500ML",
+            "name": "Sunflower Cooking Oil 500ml",
+            "description": "Refined sunflower oil, light and suitable for everyday cooking.",
+            "price_paise": 10500,
+            "rating": 4.2,
+            "category": "staples",
+            "attributes": {"type": "sunflower", "volume_l": 0.5},
+            "variant_group": "GB-OIL-SUNFLOWER",
+            "variant_label": "500ml",
         },
         {
             "sku": "GB-OIL-SUNFLOWER-1L",
@@ -335,6 +586,30 @@ PRODUCTS_BY_MERCHANT = {
             "rating": 4.2,
             "category": "staples",
             "attributes": {"type": "sunflower", "volume_l": 1},
+            "variant_group": "GB-OIL-SUNFLOWER",
+            "variant_label": "1L",
+        },
+        {
+            "sku": "GB-OIL-SUNFLOWER-5L",
+            "name": "Sunflower Cooking Oil 5L",
+            "description": "Refined sunflower oil, light and suitable for everyday cooking.",
+            "price_paise": 84900,
+            "rating": 4.2,
+            "category": "staples",
+            "attributes": {"type": "sunflower", "volume_l": 5},
+            "variant_group": "GB-OIL-SUNFLOWER",
+            "variant_label": "5L",
+        },
+        {
+            "sku": "GB-DAL-TOOR-500G",
+            "name": "Toor Dal 500g",
+            "description": "Unpolished toor dal, rich in protein and fiber.",
+            "price_paise": 8500,
+            "rating": 4.4,
+            "category": "staples",
+            "attributes": {"type": "toor", "weight_kg": 0.5},
+            "variant_group": "GB-DAL-TOOR",
+            "variant_label": "500g",
         },
         {
             "sku": "GB-DAL-TOOR-1KG",
@@ -344,6 +619,19 @@ PRODUCTS_BY_MERCHANT = {
             "rating": 4.4,
             "category": "staples",
             "attributes": {"type": "toor", "weight_kg": 1},
+            "variant_group": "GB-DAL-TOOR",
+            "variant_label": "1kg",
+        },
+        {
+            "sku": "GB-DAL-TOOR-2KG",
+            "name": "Toor Dal 2kg",
+            "description": "Unpolished toor dal, rich in protein and fiber.",
+            "price_paise": 29900,
+            "rating": 4.4,
+            "category": "staples",
+            "attributes": {"type": "toor", "weight_kg": 2},
+            "variant_group": "GB-DAL-TOOR",
+            "variant_label": "2kg",
         },
         {
             "sku": "GB-TEA-MASALA-500G",
@@ -391,6 +679,17 @@ PRODUCTS_BY_MERCHANT = {
             "attributes": {"weight_g": 300},
         },
         {
+            "sku": "GB-ATTA-WHEAT-1KG",
+            "name": "Whole Wheat Atta 1kg",
+            "description": "Stone-ground whole wheat flour for soft rotis.",
+            "price_paise": 6500,
+            "rating": 4.3,
+            "category": "staples",
+            "attributes": {"weight_kg": 1},
+            "variant_group": "GB-ATTA-WHEAT",
+            "variant_label": "1kg",
+        },
+        {
             "sku": "GB-ATTA-WHEAT-5KG",
             "name": "Whole Wheat Atta 5kg",
             "description": "Stone-ground whole wheat flour for soft rotis.",
@@ -398,6 +697,19 @@ PRODUCTS_BY_MERCHANT = {
             "rating": 4.3,
             "category": "staples",
             "attributes": {"weight_kg": 5},
+            "variant_group": "GB-ATTA-WHEAT",
+            "variant_label": "5kg",
+        },
+        {
+            "sku": "GB-ATTA-WHEAT-10KG",
+            "name": "Whole Wheat Atta 10kg",
+            "description": "Stone-ground whole wheat flour for soft rotis.",
+            "price_paise": 52900,
+            "rating": 4.3,
+            "category": "staples",
+            "attributes": {"weight_kg": 10},
+            "variant_group": "GB-ATTA-WHEAT",
+            "variant_label": "10kg",
         },
         {
             "sku": "GB-SPICE-GARAM-MASALA-100G",
@@ -1241,6 +1553,12 @@ PRODUCTS_BY_MERCHANT = {
 
 AGENT_CLIENTS = [
     {
+        "merchant_key": "stepforward",
+        "name": "Judge Demo Agent",
+        "max_order_amount_paise": 500000,
+        "max_orders_per_day": 10,
+    },
+    {
         "merchant_key": "threadline",
         "name": "Judge Demo Agent",
         "max_order_amount_paise": 500000,
@@ -1250,6 +1568,12 @@ AGENT_CLIENTS = [
         "merchant_key": "circuithub",
         "name": "Claude Desktop (test)",
         "max_order_amount_paise": 1000000,
+        "max_orders_per_day": 5,
+    },
+    {
+        "merchant_key": "novatech",
+        "name": "Judge Demo Agent",
+        "max_order_amount_paise": 10000000,
         "max_orders_per_day": 5,
     },
     {
@@ -1322,8 +1646,10 @@ AGENT_CLIENTS = [
 
 USERS = [
     {"email": "admin.datainn@gmail.com", "role": "buyer", "merchant_key": None},
+    {"email": "admin@stepforward.demo", "role": "merchant_admin", "merchant_key": "stepforward"},
     {"email": "admin@threadline.demo", "role": "merchant_admin", "merchant_key": "threadline"},
     {"email": "admin@circuithub.demo", "role": "merchant_admin", "merchant_key": "circuithub"},
+    {"email": "admin@novatech.demo", "role": "merchant_admin", "merchant_key": "novatech"},
     {"email": "admin@pageturner.demo", "role": "merchant_admin", "merchant_key": "pageturner"},
     {"email": "admin@greenbasket.demo", "role": "merchant_admin", "merchant_key": "greenbasket"},
     {"email": "admin@homenest.demo", "role": "merchant_admin", "merchant_key": "homenest"},
@@ -1338,6 +1664,37 @@ USERS = [
 ]
 
 
+def reset(db: Session) -> None:
+    """Wipes the catalog domain (orders, audit log, agent_clients, products,
+    merchant_admin users, merchants) so `seed()` can rebuild it under the new
+    taxonomy. Deliberately leaves the buyer account and chat history
+    (conversations/messages) alone — those aren't tied to the merchant
+    structure and there's no reason to lose a real user's chats over a data
+    reshuffle."""
+    print("[reset] wiping catalog data (orders, audit log, agent_clients, products, merchant admins, merchants)...")
+    db.execute(text("DELETE FROM audit_log"))
+    db.execute(text("DELETE FROM orders"))
+    db.execute(text("DELETE FROM agent_clients"))
+    db.execute(text("DELETE FROM products"))
+    db.execute(
+        text(
+            "DELETE FROM access_tokens WHERE user_id IN (SELECT id FROM users WHERE role = 'merchant_admin')"
+        )
+    )
+    db.execute(
+        text(
+            "DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE role = 'merchant_admin')"
+        )
+    )
+    db.execute(text("DELETE FROM users WHERE role = 'merchant_admin'"))
+    # conversations.merchant_id is a nullable legacy column (chats are
+    # global-scoped now) — null it out rather than deleting chat history.
+    db.execute(text("UPDATE conversations SET merchant_id = NULL WHERE merchant_id IS NOT NULL"))
+    db.execute(text("DELETE FROM merchants"))
+    db.commit()
+    print("[reset] done.\n")
+
+
 def seed(db: Session) -> None:
     # --- Merchants ---
     merchants_by_key: dict[str, Merchant] = {}
@@ -1347,13 +1704,14 @@ def seed(db: Session) -> None:
             merchants_by_key[m["key"]] = existing
             print(f"[skip] merchant already exists: {m['name']}")
         else:
-            merchant = Merchant(name=m["name"])
+            merchant = Merchant(name=m["name"], slug=m["slug"])
             db.add(merchant)
             db.flush()
             merchants_by_key[m["key"]] = merchant
-            print(f"[create] merchant: {m['name']}")
+            print(f"[create] merchant: {m['name']} (/{m['slug']})")
 
     # --- Products ---
+    images_found = images_missing = 0
     for merchant_key, products in PRODUCTS_BY_MERCHANT.items():
         merchant = merchants_by_key[merchant_key]
         for p in products:
@@ -1361,6 +1719,11 @@ def seed(db: Session) -> None:
             if existing:
                 print(f"[skip] product already exists: {p['sku']}")
                 continue
+            image_data, image_mime_type = load_product_image(p["sku"])
+            if image_data:
+                images_found += 1
+            else:
+                images_missing += 1
             product = Product(
                 merchant_id=merchant.id,
                 sku=p["sku"],
@@ -1370,10 +1733,14 @@ def seed(db: Session) -> None:
                 rating=p["rating"],
                 category=p["category"],
                 attributes=p["attributes"],
+                variant_group=p.get("variant_group"),
+                variant_label=p.get("variant_label"),
+                image_data=image_data,
+                image_mime_type=image_mime_type,
                 is_active=True,
             )
             db.add(product)
-            print(f"[create] product: {p['sku']} ({p['name']})")
+            print(f"[create] product: {p['sku']} ({p['name']}){' [img]' if image_data else ''}")
 
     # --- Agent clients ---
     for ac in AGENT_CLIENTS:
@@ -1416,11 +1783,14 @@ def seed(db: Session) -> None:
         print(f"[create] user: {u['email']} (role={u['role']}, password={DEMO_PASSWORD})")
 
     db.commit()
+    print(f"\n[images] {images_found} product(s) got an image, {images_missing} left without one.")
 
 
 def main() -> None:
     db = SessionLocal()
     try:
+        if "--reset" in sys.argv:
+            reset(db)
         seed(db)
         print("\nSeed complete.")
     finally:
