@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class MerchantResponse(BaseModel):
     id: uuid.UUID
     name: str
+    slug: str
     razorpay_account_id: str | None = None
     created_at: datetime
 
