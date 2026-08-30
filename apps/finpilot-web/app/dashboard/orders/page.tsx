@@ -3,7 +3,14 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
-import { ChevronDownIcon, ExternalLinkIcon, PackageIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ExternalLinkIcon,
+  PackageIcon,
+  ReceiptIndianRupeeIcon,
+  ClockIcon,
+  XCircleIcon,
+} from "lucide-react";
 
 import { listMerchants, listMerchantProducts, listOrders, getOrderAuditTrail } from "@/lib/api";
 import type { AuditLogEntry, Merchant, Order, Product } from "@/lib/types";
@@ -11,11 +18,43 @@ import { cn } from "@/lib/utils";
 import { OrderStatusBadge } from "@/components/orders/order-status-badge";
 import { AuditTrail } from "@/components/orders/audit-trail";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone: "default" | "warning" | "destructive";
+}) {
+  return (
+    <Card size="sm">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-xs font-normal text-muted-foreground">{label}</CardTitle>
+        <Icon
+          className={cn(
+            "size-4",
+            tone === "warning" && "text-warning",
+            tone === "destructive" && "text-destructive",
+            tone === "default" && "text-brand"
+          )}
+        />
+      </CardHeader>
+      <CardContent>
+        <p className="text-2xl font-semibold">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function OrdersPage() {
   return (
@@ -89,6 +128,21 @@ function OrdersPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkOrderId, orders]);
 
+  const stats = React.useMemo(() => {
+    const list = orders ?? [];
+    const totalSpentPaise = list
+      .filter((o) => o.status === "paid")
+      .reduce((sum, o) => sum + o.amount_paise, 0);
+    const pending = list.filter((o) => o.status === "created" || o.status === "pending").length;
+    const failed = list.filter((o) => o.status === "failed").length;
+    return {
+      total: list.length,
+      totalSpent: `₹${(totalSpentPaise / 100).toLocaleString("en-IN")}`,
+      pending,
+      failed,
+    };
+  }, [orders]);
+
   return (
     <div className="flex h-svh flex-col">
       <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b px-4 lg:px-6">
@@ -115,12 +169,20 @@ function OrdersPageContent() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-border">
+          <>
+            <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <StatCard label="Total orders" value={String(stats.total)} icon={PackageIcon} tone="default" />
+              <StatCard label="Total spent" value={stats.totalSpent} icon={ReceiptIndianRupeeIcon} tone="default" />
+              <StatCard label="Pending payment" value={String(stats.pending)} icon={ClockIcon} tone="warning" />
+              <StatCard label="Failed" value={String(stats.failed)} icon={XCircleIcon} tone="destructive" />
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
                   <TableHead>Placed by</TableHead>
+                  <TableHead>Qty</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Placed</TableHead>
@@ -152,6 +214,7 @@ function OrdersPageContent() {
                         <TableCell>
                           {order.placed_by === "buyer_chat" ? "You (chat)" : "External agent"}
                         </TableCell>
+                        <TableCell>{order.quantity}</TableCell>
                         <TableCell>₹{(order.amount_paise / 100).toLocaleString("en-IN")}</TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
@@ -186,7 +249,7 @@ function OrdersPageContent() {
                       </TableRow>
                       {isExpanded && (
                         <TableRow className="hover:bg-transparent">
-                          <TableCell colSpan={6} className="whitespace-normal bg-muted/30 p-0">
+                          <TableCell colSpan={7} className="whitespace-normal bg-muted/30 p-0">
                             {auditLoading === order.id ? (
                               <div className="flex items-center justify-center py-6 text-muted-foreground">
                                 <Spinner className="size-4" />
@@ -202,7 +265,8 @@ function OrdersPageContent() {
                 })}
               </TableBody>
             </Table>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>
