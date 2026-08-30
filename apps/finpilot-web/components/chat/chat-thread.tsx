@@ -12,24 +12,29 @@ import { FormattedText } from "@/components/chat/formatted-text";
 import type { CreateOrderToolResult, ListOrdersItem, MessageRow, SearchCatalogResultItem } from "@/lib/types";
 
 function supersededSearchIds(messages: MessageRow[]): Set<string> {
-  // Within a single buyer turn, the agent sometimes calls search_catalog more
-  // than once — e.g. it guesses the wrong category, gets an irrelevant
-  // result, and retries with a better one. Its final reply is written
-  // against that last, corrected call, but without this, every intermediate
-  // (wrong) search still rendered its own product grid — showing exercise
-  // equipment as if it were a real answer to "fitness tracker" right above
-  // the correct smartwatch result. Only the *last* search_catalog call
-  // before the next user message reflects what the agent actually meant.
+  // A search_catalog call is superseded only when a LATER call in the same
+  // turn re-searches the *same* query — that's the agent correcting itself
+  // (e.g. got "Car Phone Mount" for "mobile phone" with no category, then
+  // retried the identical query with category="smartphones" and got the
+  // actual phones) — only the corrected result should show, not both.
+  //
+  // A later call with a DIFFERENT query is a different item in a multi-item
+  // request ("shoes, laptop, shirt, mobile, coffee") and must render
+  // alongside the others, not replace them — keying on the query text
+  // (rather than "just the last call this turn", the previous approach)
+  // is what tells these two situations apart.
   const superseded = new Set<string>();
-  let lastSearchId: string | null = null;
+  const lastIdByQuery = new Map<string, string>();
   for (const m of messages) {
     if (m.role === "user") {
-      lastSearchId = null;
+      lastIdByQuery.clear();
       continue;
     }
     if (m.role === "tool" && m.tool_call?.name === "search_catalog") {
-      if (lastSearchId) superseded.add(lastSearchId);
-      lastSearchId = m.id;
+      const query = String(m.tool_call?.arguments?.query ?? "").trim().toLowerCase();
+      const prevId = lastIdByQuery.get(query);
+      if (prevId) superseded.add(prevId);
+      lastIdByQuery.set(query, m.id);
     }
   }
   return superseded;
@@ -80,7 +85,7 @@ export function ChatThread({
         const name = m.tool_call?.name;
 
         if (name === "search_catalog") {
-          if (superseded.has(m.id)) return null; // a later search this same turn replaced it
+          if (superseded.has(m.id)) return null; // a later same-query search this turn corrected it
           const results =
             (m.tool_call?.result as { results?: SearchCatalogResultItem[] } | undefined)?.results ?? [];
           if (results.length === 0) return null;

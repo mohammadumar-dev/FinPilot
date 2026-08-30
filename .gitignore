@@ -5,6 +5,10 @@ apps/finpilot-backend/__pycache__/
 **/__pycache__/
 *.pyc
 
+# Seed source images (large binary assets, ingested into the DB at seed
+# time via app/seed/images.py — not meant to live in git)
+apps/finpilot-backend/public/product-images/
+
 # Frontend (Node/Next.js)
 apps/finpilot-web/node_modules/
 apps/finpilot-web/.next/

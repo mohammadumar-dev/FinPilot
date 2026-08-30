@@ -65,24 +65,26 @@ def search_catalog(query: str, max_price: int | None = None, category: str | Non
 
 
 @mcp.tool()
-def create_order(product_id: str, idempotency_key: str) -> dict:
+def create_order(product_id: str, idempotency_key: str, quantity: int = 1) -> dict:
     """Create an order for a product. product_id MUST come from a prior
     search_catalog result — never invent one. idempotency_key must be a
     caller-generated unique string; retrying the same key + product_id
-    returns the original order instead of creating a duplicate.
+    returns the original order instead of creating a duplicate. quantity is
+    the number of units (default 1) — the returned amount is unit price *
+    quantity, re-computed server-side from the current catalog price.
 
     On failure returns {"error": <code>, "message": <str>} where code is one
     of: product_not_found, budget_exceeded, rate_limited, duplicate_order,
-    unauthorized. On success returns the full order object."""
+    invalid_quantity, unauthorized. On success returns the full order object."""
     agent = current_agent.get()
     if agent is None:
         return _UNAUTHORIZED
 
     db = SessionLocal()
     try:
-        arguments = {"product_id": product_id, "idempotency_key": idempotency_key}
+        arguments = {"product_id": product_id, "idempotency_key": idempotency_key, "quantity": quantity}
         try:
-            order = create_order_for_agent(db, agent, product_id, idempotency_key)
+            order = create_order_for_agent(db, agent, product_id, idempotency_key, quantity=quantity)
         except OrderError as e:
             log_audit(
                 db,
@@ -98,6 +100,7 @@ def create_order(product_id: str, idempotency_key: str) -> dict:
         result = {
             "order_id": str(order.id),
             "status": order.status,
+            "quantity": order.quantity,
             "amount_paise": order.amount_paise,
             "amount_rupees": round(order.amount_paise / 100, 2),
             "razorpay_payment_link": order.payment_link,

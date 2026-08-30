@@ -55,13 +55,13 @@ export default function NewChatPage() {
 
       <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4 pb-24">
         <div className="flex flex-col items-center gap-3 text-center">
-          <span className="flex size-11 items-center justify-center rounded-2xl bg-brand text-brand-foreground">
+          <span className="flex size-11 items-center justify-center rounded-xl bg-brand text-brand-foreground">
             <SparkleIcon className="size-5" />
           </span>
-          <h2 className="text-2xl font-semibold tracking-tight">
+          <h2 className="font-heading text-3xl italic">
             Hey <span className="capitalize">{greetingName}</span>, what are you after?
           </h2>
-          <p className="max-w-md text-sm text-muted-foreground">
+          <p className="max-w-md text-sm text-balance text-muted-foreground">
             One chat, every store — tell me what you want and your budget, and I&apos;ll find the best-rated
             option across the whole marketplace and buy it for you.
           </p>

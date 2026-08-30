@@ -52,36 +52,48 @@ def _word_boundary(word: str) -> str:
     return rf"\y{base}e?s?\y"
 
 
-def _matched_word_tiers(product: Product, merchant_name: str, terms: list[str]) -> tuple[int, int, int]:
-    """(name_or_category_count, description_count, merchant_only_count).
+def _matched_word_tiers(product: Product, merchant_name: str, terms: list[str]) -> tuple[int, int, int, int]:
+    """(category_count, name_count, description_count, merchant_only_count).
 
-    Three tiers, strongest first:
-      1. name/category — the product's own identity. "shoes" matching the
-         *name* "Running Shoes Pro" means this genuinely is a pair of shoes.
-      2. description — real but weaker: free text can mention a word
+    Four tiers, strongest first:
+      1. category — the product's actual taxonomy classification. "laptop"
+         matching the *category* "laptops" means this genuinely is a laptop.
+         This must outrank a same-word match that's only in another
+         product's name — e.g. "Laptop Backpack" (category "bags") is a
+         laptop *accessory*, not a laptop, and must never outrank a real
+         laptop just because it's cheaper and shares the word.
+      2. name — still a real identity signal on its own ("shoes" matching
+         the *name* "Running Shoes Pro" means this genuinely is a pair of
+         shoes), but weaker than a category match since a name can borrow
+         another product's word incidentally.
+      3. description — real but weaker still: free text can mention a word
          incidentally (a duffel bag's description says "separate shoe
          compartment" — that doesn't make the duffel bag a shoe).
-      3. merchant name only — weakest of all: the term just happens to
+      4. merchant name only — weakest of all: the term just happens to
          overlap a store's brand name ("sport" matching "SprintZone
          Sports", "beauty" matching "GlowUp Beauty"), saying nothing about
          whether this particular product is what was asked for.
 
-    Ranking by (tier1, tier2, tier3) in that order keeps an actual product
-    match ahead of a same-store or same-description accessory that only
-    incidentally shares a word, however cheap or well-rated it is."""
-    name_cat_text = " ".join(filter(None, [product.name, product.category])).lower()
+    Ranking by these tiers in order keeps an actual product match ahead of
+    a same-category-word accessory, same-store, or same-description item
+    that only incidentally shares a word, however cheap or well-rated it
+    is."""
+    category_text = (product.category or "").lower()
+    name_text = (product.name or "").lower()
     description_text = (product.description or "").lower()
     merchant_text = (merchant_name or "").lower()
-    tier1 = tier2 = tier3 = 0
+    tier_category = tier_name = tier_description = tier_merchant = 0
     for t in terms:
         pattern = rf"\b{re.escape(_singular(t.lower()))}e?s?\b"
-        if re.search(pattern, name_cat_text):
-            tier1 += 1
+        if re.search(pattern, category_text):
+            tier_category += 1
+        elif re.search(pattern, name_text):
+            tier_name += 1
         elif re.search(pattern, description_text):
-            tier2 += 1
+            tier_description += 1
         elif re.search(pattern, merchant_text):
-            tier3 += 1
-    return tier1, tier2, tier3
+            tier_merchant += 1
+    return tier_category, tier_name, tier_description, tier_merchant
 
 
 def search_catalog(
@@ -135,14 +147,40 @@ def search_catalog(
     prices = [p.price_paise for p, _ in candidates]
     min_price, max_price = min(prices), max(prices)
 
-    # Rank by relevance tier first (name/category > description > merchant
+    # Rank by relevance tier first (category > name > description > merchant
     # name — see _matched_word_tiers), then by the rating/price formula only
     # as the tiebreak within a tier.
     scored = [
         (p, merchant_name, *_matched_word_tiers(p, merchant_name, search_terms), _score(p, min_price, max_price))
         for p, merchant_name in candidates
     ]
-    scored.sort(key=lambda t: (t[2], t[3], t[4], t[5]), reverse=True)
+    scored.sort(key=lambda t: (t[2], t[3], t[4], t[5], t[6]), reverse=True)
+
+    # If a genuine category-taxonomy match exists (the buyer/agent's implied
+    # category term — e.g. "smartphones" for "smart phone" — matches actual
+    # product categories), cut off anything that ISN'T in that category, even
+    # if it happens to match a weaker tier too. Without this, a category with
+    # only 1-2 real members (e.g. only 2 phones exist) gets its remaining
+    # `limit` slots backfilled with whatever else incidentally mentions the
+    # same word — a car phone *mount*, a shirt described as "smart-casual" —
+    # which is exactly the kind of padding-with-unrelated-products this
+    # search is supposed to avoid. Only skip this cutoff when NOTHING matched
+    # by category (best_category_tier == 0) — then the weaker tiers are all
+    # we have, and returning them beats returning nothing.
+    best_category_tier = scored[0][2] if scored else 0
+    if best_category_tier > 0:
+        scored = [t for t in scored if t[2] == best_category_tier]
+
+    # Same principle one level down: within that category, a genuine name
+    # match (e.g. "running" AND "shoes" both in "Men's Running Shoes Pro")
+    # must cut off anything that only matched the category more generically
+    # (a "Kids School Shoes" or "Women's Ballet Flats" is real footwear, but
+    # isn't what "running shoes" asked for) — otherwise a specific style
+    # request still gets padded out to `limit` with same-category siblings
+    # that don't actually match the name the buyer used.
+    best_name_tier = scored[0][3] if scored else 0
+    if best_name_tier > 0:
+        scored = [t for t in scored if t[3] == best_name_tier]
 
     return [
         {
@@ -156,9 +194,12 @@ def search_catalog(
             "category": p.category,
             "merchant_id": str(p.merchant_id),
             "merchant_name": merchant_name,
+            "variant_group": p.variant_group,
+            "variant_label": p.variant_label,
+            "has_image": p.has_image,
             "score": score,
         }
-        for p, merchant_name, _tier1, _tier2, _tier3, score in scored[:limit]
+        for p, merchant_name, _tier_cat, _tier_name, _tier_desc, _tier_merch, score in scored[:limit]
     ]
 
 
@@ -180,14 +221,14 @@ def get_product_detail(db: Session, product_id: str) -> dict | None:
         return None
 
     row = (
-        db.query(Product, Merchant.name)
+        db.query(Product, Merchant.name, Merchant.slug)
         .join(Merchant, Merchant.id == Product.merchant_id)
         .filter(Product.id == pid, Product.is_active.is_(True))
         .one_or_none()
     )
     if row is None:
         return None
-    product, merchant_name = row
+    product, merchant_name, merchant_slug = row
 
     return {
         "product_id": str(product.id),
@@ -201,4 +242,8 @@ def get_product_detail(db: Session, product_id: str) -> dict | None:
         "attributes": product.attributes,
         "merchant_id": str(product.merchant_id),
         "merchant_name": merchant_name,
+        "merchant_slug": merchant_slug,
+        "variant_group": product.variant_group,
+        "variant_label": product.variant_label,
+        "has_image": product.has_image,
     }

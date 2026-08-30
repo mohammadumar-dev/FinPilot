@@ -40,7 +40,9 @@ export function OrderResultCard({ result }: { result: CreateOrderToolResult }) {
       </div>
       <div className="flex items-center justify-between gap-2">
         {result.amount_rupees != null && (
-          <span className="text-lg font-semibold">₹{result.amount_rupees.toLocaleString("en-IN")}</span>
+          <span className="font-mono text-lg font-medium tabular-nums">
+            ₹{result.amount_rupees.toLocaleString("en-IN")}
+          </span>
         )}
         {result.razorpay_payment_link && (
           <Button

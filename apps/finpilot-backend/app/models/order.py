@@ -24,6 +24,10 @@ class Order(Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     merchant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("merchants.id"), nullable=False)
     product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    # Number of units bought — amount_paise is already quantity * unit price
+    # at order-creation time (order_service re-reads the unit price and
+    # multiplies), never derived client-side.
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     amount_paise: Mapped[int] = mapped_column(Integer, nullable=False)
     # Holds a Razorpay Payment Link id (e.g. "plink_...") — checkout is done via
     # the Payment Links API, not a bare Order, since a plain Order has no

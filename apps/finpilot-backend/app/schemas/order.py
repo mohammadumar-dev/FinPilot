@@ -9,6 +9,7 @@ class OrderResponse(BaseModel):
     user_id: uuid.UUID | None = None
     merchant_id: uuid.UUID
     product_id: uuid.UUID
+    quantity: int
     amount_paise: int
     razorpay_order_id: str | None = None
     payment_link: str | None = None
