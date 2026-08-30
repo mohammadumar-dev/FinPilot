@@ -1,11 +1,14 @@
 import type {
   AuditLogEntry,
+  CartCheckoutResult,
+  CartItem,
   ChatMessageResponse,
   Conversation,
   MessageRow,
   Order,
   Merchant,
   Product,
+  ProductDetail,
   TokenPair,
   User,
 } from "@/lib/types";
@@ -124,6 +127,17 @@ function apiPost<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
+function apiPut<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: "PUT",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
+function apiDelete<T>(path: string): Promise<T> {
+  return request<T>(path, { method: "DELETE" });
+}
+
 // --- Auth ---
 
 export async function login(email: string, password: string): Promise<TokenPair> {
@@ -154,6 +168,16 @@ export function listMerchants(): Promise<Merchant[]> {
 
 export function listMerchantProducts(merchantId: string): Promise<Product[]> {
   return apiGet<Product[]>(`/merchant/${merchantId}/products`);
+}
+
+export function getProduct(productId: string): Promise<ProductDetail> {
+  return apiGet<ProductDetail>(`/products/${productId}`);
+}
+
+// Product photos are served unauthenticated (see the backend route) so a
+// plain <img src> can load them directly — no fetch/blob-URL dance needed.
+export function productImageUrl(productId: string): string {
+  return `${API_BASE_URL}/products/${productId}/image`;
 }
 
 // --- Chat ---
@@ -192,4 +216,24 @@ export function getConversationAuditTrail(conversationId: string): Promise<Audit
   return apiGet<AuditLogEntry[]>(`/audit/${conversationId}`);
 }
 
-export { apiGet, apiPost };
+// --- Cart ---
+
+export function getCart(): Promise<CartItem[]> {
+  return apiGet<CartItem[]>("/cart");
+}
+
+// quantity <= 0 removes the line (server-side upsert semantics — see
+// app/api/routes/cart.py). Returns null in that case.
+export function upsertCartItem(productId: string, quantity: number): Promise<CartItem | null> {
+  return apiPut<CartItem | null>("/cart/items", { product_id: productId, quantity });
+}
+
+export function removeCartItem(productId: string): Promise<void> {
+  return apiDelete<void>(`/cart/items/${productId}`);
+}
+
+export function checkoutCart(): Promise<CartCheckoutResult> {
+  return apiPost<CartCheckoutResult>("/cart/checkout");
+}
+
+export { apiGet, apiPost, apiPut, apiDelete };

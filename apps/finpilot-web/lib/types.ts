@@ -14,6 +14,7 @@ export interface TokenPair {
 export interface Merchant {
   id: string;
   name: string;
+  slug: string;
   razorpay_account_id: string | null;
   created_at: string;
 }
@@ -29,7 +30,28 @@ export interface Product {
   category: string | null;
   attributes: Record<string, unknown> | null;
   is_active: boolean;
+  variant_group: string | null;
+  variant_label: string | null;
+  has_image: boolean;
   created_at: string;
+}
+
+export interface ProductDetail {
+  product_id: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  price_paise: number;
+  price_rupees: number;
+  rating: number;
+  category: string | null;
+  attributes: Record<string, unknown> | null;
+  merchant_id: string;
+  merchant_name: string;
+  merchant_slug: string;
+  variant_group: string | null;
+  variant_label: string | null;
+  has_image: boolean;
 }
 
 export type OrderStatus = "created" | "pending" | "paid" | "failed";
@@ -40,6 +62,7 @@ export interface Order {
   user_id: string | null;
   merchant_id: string;
   product_id: string;
+  quantity: number;
   amount_paise: number;
   razorpay_order_id: string | null;
   payment_link: string | null;
@@ -107,12 +130,16 @@ export interface SearchCatalogResultItem {
   category: string | null;
   merchant_id: string;
   merchant_name: string;
+  variant_group: string | null;
+  variant_label: string | null;
+  has_image: boolean;
   score: number;
 }
 
 export interface CreateOrderToolResult {
   order_id?: string;
   status?: OrderStatus;
+  quantity?: number;
   amount_paise?: number;
   amount_rupees?: number;
   merchant_name?: string | null;
@@ -126,9 +153,37 @@ export interface ListOrdersItem {
   order_id: string;
   product_name: string;
   merchant_name: string;
+  quantity: number;
   amount_rupees: number;
   status: OrderStatus;
   failure_reason: string | null;
   razorpay_payment_link: string | null;
   created_at: string;
+}
+
+export interface CartItem {
+  product_id: string;
+  sku: string;
+  name: string;
+  price_paise: number;
+  price_rupees: number;
+  quantity: number;
+  line_total_paise: number;
+  merchant_id: string;
+  merchant_name: string;
+  category: string | null;
+  variant_label: string | null;
+  has_image: boolean;
+  unavailable: boolean;
+}
+
+export interface CartCheckoutError {
+  product_id: string;
+  code: string;
+  message: string;
+}
+
+export interface CartCheckoutResult {
+  orders: Order[];
+  errors: CartCheckoutError[];
 }
