@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SparkleIcon } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
+import { CartProvider } from "@/lib/cart-context";
 import { ConversationsProvider } from "@/lib/conversations-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -30,17 +31,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <ConversationsProvider>
-      <SidebarProvider
-        style={
-          {
-            "--sidebar-width": "17rem",
-            "--header-height": "3.5rem",
-          } as React.CSSProperties
-        }
-      >
-        <AppSidebar variant="floating" />
-        <SidebarInset>{children}</SidebarInset>
-      </SidebarProvider>
+      <CartProvider>
+        <SidebarProvider
+          style={
+            {
+              "--sidebar-width": "17rem",
+              "--header-height": "3.5rem",
+            } as React.CSSProperties
+          }
+        >
+          <AppSidebar variant="floating" />
+          <SidebarInset>{children}</SidebarInset>
+        </SidebarProvider>
+      </CartProvider>
     </ConversationsProvider>
   );
 }

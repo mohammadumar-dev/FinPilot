@@ -3,8 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SparkleIcon, SquarePenIcon, PackageIcon } from "lucide-react";
+import { SparkleIcon, SquarePenIcon, PackageIcon, ShoppingCartIcon, StoreIcon } from "lucide-react";
 
+import { useCart } from "@/lib/cart-context";
 import { NavUser } from "@/components/nav-user";
 import { ConversationList } from "@/components/conversation-list";
 import {
@@ -13,6 +14,7 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
@@ -20,6 +22,7 @@ import {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
+  const { count } = useCart();
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -55,6 +58,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarSeparator />
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              isActive={pathname?.startsWith("/dashboard/merchants") ?? false}
+              render={<Link href="/dashboard/merchants" />}
+            >
+              <StoreIcon />
+              <span>Merchants</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton isActive={pathname === "/dashboard/cart"} render={<Link href="/dashboard/cart" />}>
+              <ShoppingCartIcon />
+              <span>Cart</span>
+            </SidebarMenuButton>
+            {count > 0 && <SidebarMenuBadge>{count}</SidebarMenuBadge>}
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton isActive={pathname === "/dashboard/orders"} render={<Link href="/dashboard/orders" />}>
               <PackageIcon />
