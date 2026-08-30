@@ -8,3 +8,4 @@ from app.models.agent_client import AgentClient  # noqa: F401
 from app.models.conversation import Conversation, Message  # noqa: F401
 from app.models.order import Order  # noqa: F401
 from app.models.audit_log import AuditLog  # noqa: F401
+from app.models.cart_item import CartItem  # noqa: F401
