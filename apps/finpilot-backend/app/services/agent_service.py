@@ -191,6 +191,77 @@ _AFFIRMATIVE_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+# Did the agent's previous message actually ask the buyer to commit? Matching
+# on the question is what lets a bare selection count as an answer to it.
+_PURCHASE_QUESTION_RE = re.compile(
+    r"""(
+          which\s+(one|ones|of\s+(these|those)|shoes|item|items|would|should)
+        | (would|want|shall|should)\s+(you|i|me)\b[^?]{0,80}?\b(order|buy|purchase|get|place)
+        | (want|like)\s+me\s+to\s+(order|buy|purchase|place)
+        | (can|could)\s+you\s+confirm
+        | confirm\s+(the|your|this|that|it|full)
+        | shall\s+i\s+(order|buy|place|go\s+ahead)
+        | ready\s+to\s+order
+    )""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Anything that reads as backing out. Checked first, so "no, not the shoes"
+# can never be mistaken for agreement.
+_NEGATION_RE = re.compile(
+    r"\b(no|nope|nah|not|don'?t|do\s+not|cancel|stop|wait|hold\s+on|never\s*mind|nevermind|remove)\b",
+    re.IGNORECASE,
+)
+
+# A short reply that is itself a question ("what's the warranty?") is the buyer
+# asking for more, not agreeing to buy.
+_QUESTION_LEAD_RE = re.compile(
+    r"^\s*(what|why|how|when|where|who|can|could|do|does|did|is|are|any|tell|show)\b|\?\s*$",
+    re.IGNORECASE,
+)
+
+# Selections answering a purchase question are short ("all", "mens one", "the
+# second", "both"). A long message is a fresh request, not an answer.
+_MAX_SELECTION_WORDS = 6
+
+
+def _last_agent_message(db: Session, conversation_id: uuid.UUID) -> str:
+    """The agent's most recent spoken message, skipping tool-call-only turns."""
+    rows = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation_id, Message.role == "agent")
+        .order_by(Message.seq.desc())
+        .limit(5)
+        .all()
+    )
+    for row in rows:
+        if row.content and row.content.strip():
+            return row.content
+    return ""
+
+
+def _buyer_confirmed(db: Session, conversation_id: uuid.UUID, user_message: str) -> bool:
+    """Whether this message authorises a purchase.
+
+    Keyword matching alone read each message in isolation, so it rejected the
+    two most natural ways to say yes: answering "Which of these would you like
+    to purchase?" with "all", and answering "Which shoes should I include, and
+    can you confirm?" with "mens one". Both were blocked as
+    confirmation_required, the model retried against a gate that would never
+    open, and the turn burned the whole model chain before failing.
+
+    A selection only counts when the agent actually asked for one, so this
+    widens what can be confirmed without widening when.
+    """
+    text = (user_message or "").strip()
+    if not text or _NEGATION_RE.search(text):
+        return False
+    if _AFFIRMATIVE_RE.search(text):
+        return True
+    if _QUESTION_LEAD_RE.search(text) or len(text.split()) > _MAX_SELECTION_WORDS:
+        return False
+    return bool(_PURCHASE_QUESTION_RE.search(_last_agent_message(db, conversation_id)))
+
 
 # What the model actually needs to remember about a product it showed
 # earlier: enough to name it, price it, and order it. Everything else in a
@@ -314,7 +385,7 @@ def _execute_tool(
     user_id: uuid.UUID,
     name: str,
     arguments: dict,
-    latest_user_text: str,
+    buyer_confirmed: bool,
 ) -> dict:
     if name == "search_catalog":
         max_price = arguments.get("max_price")
@@ -357,7 +428,7 @@ def _execute_tool(
         product_id = arguments.get("product_id", "")
         quantity = int(arguments.get("quantity") or 1)
 
-        if not _AFFIRMATIVE_RE.search(latest_user_text) or not _product_was_shown(db, conversation.id, product_id):
+        if not buyer_confirmed or not _product_was_shown(db, conversation.id, product_id):
             log_audit(
                 db,
                 action="create_order",
@@ -382,6 +453,35 @@ def _execute_tool(
                 conversation_id=conversation.id,
             )
             return {"error": e.code, "message": e.message, **e.data}
+        except Exception:
+            # Anything the payment provider raises that isn't an OrderError —
+            # an outage, a 5xx, or Razorpay's "test mode limit of 30 reached
+            # for payment_link" — used to escape this tool call and 500 the
+            # whole chat request, losing the turn and every result already on
+            # screen. The agent should hear about it as a tool error and tell
+            # the buyer, exactly as it would for any other failed order.
+            db.rollback()
+            logger.exception(
+                "create_order failed unexpectedly for product %s in conversation %s",
+                product_id,
+                conversation.id,
+            )
+            log_audit(
+                db,
+                action="create_order",
+                outcome="failed",
+                reasoning="Payment provider or database error while creating the order",
+                payload={"arguments": arguments, "error": "order_failed"},
+                user_id=user_id,
+                conversation_id=conversation.id,
+            )
+            return {
+                "error": "order_failed",
+                "message": (
+                    "Couldn't place this order right now — the payment provider rejected the "
+                    "request. Tell the buyer plainly and suggest trying again shortly."
+                ),
+            }
 
         merchant = db.get(Merchant, order.merchant_id)
         result = {
@@ -501,6 +601,11 @@ def run_agent_turn(
     user_id: uuid.UUID,
     user_message: str,
 ) -> str:
+    # Resolved before the user row is written and before the loop appends any
+    # agent messages, so _last_agent_message sees the question the buyer is
+    # actually replying to rather than something from this same turn.
+    buyer_confirmed = _buyer_confirmed(db, conversation.id, user_message)
+
     db.add(Message(conversation_id=conversation.id, role="user", content=user_message))
     db.flush()
 
@@ -587,7 +692,7 @@ def run_agent_turn(
         )
 
         for tc in requested:
-            result = _execute_tool(db, conversation, user_id, tc["name"], tc["arguments"], user_message)
+            result = _execute_tool(db, conversation, user_id, tc["name"], tc["arguments"], buyer_confirmed)
             if tc["name"] == "create_order" and result.get("order_id"):
                 if result.get("error"):
                     orders_existing.append(result)  # duplicate_order / already_purchased
