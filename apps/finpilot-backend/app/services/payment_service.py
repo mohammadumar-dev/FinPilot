@@ -8,9 +8,28 @@ Gracefully stubs itself when no real keys are configured yet, so the
 order/checkout flow is still fully exercisable end-to-end before Razorpay
 credentials are added."""
 
+import logging
 import uuid
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Razorpay test mode allows only 30 payment links per account, ever. Once that
+# is spent every order fails at the payment step, which on a demo account is
+# usually reached long before the demo. Recognised by message because the SDK
+# raises a generic ServerError with no distinguishing code.
+_TEST_MODE_LIMIT_MARKER = "test mode limit"
+
+
+def _is_test_key() -> bool:
+    """Only ever true for an explicitly test-mode key.
+
+    The stub fallback below hands back a payment link that cannot take money.
+    On a live key that would be indefensible — the buyer would be shown a dead
+    link for a real order — so it is gated on this and nothing else.
+    """
+    return settings.RAZORPAY_KEY_ID.startswith("rzp_test_")
 
 
 def razorpay_configured() -> bool:
@@ -35,19 +54,36 @@ def create_razorpay_order(amount_paise: int, receipt: str, description: str = "F
         import razorpay  # local import: only needed once keys exist
 
         client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
-        plink = client.payment_link.create(
-            {
-                "amount": amount_paise,
-                "currency": "INR",
-                "reference_id": receipt,
-                "description": description,
+        try:
+            plink = client.payment_link.create(
+                {
+                    "amount": amount_paise,
+                    "currency": "INR",
+                    "reference_id": receipt,
+                    "description": description,
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - re-raised unless it's the test cap
+            if _is_test_key() and _TEST_MODE_LIMIT_MARKER in str(exc).lower():
+                # The account's 30 test links are spent. Everything downstream
+                # of payment — order records, the audit trail, the Orders
+                # dashboard — is still worth exercising, so fall through to the
+                # clearly-marked stub instead of failing every order from here
+                # on. Loud on purpose: this is a real limit, not a fix.
+                logger.warning(
+                    "Razorpay test-mode payment-link limit reached; issuing a STUB link. "
+                    "Orders will be created but cannot actually be paid. "
+                    "Use a fresh test account to restore real links. (%s)",
+                    exc,
+                )
+            else:
+                raise
+        else:
+            return {
+                "razorpay_order_id": plink["id"],
+                "payment_link": plink["short_url"],
+                "stubbed": False,
             }
-        )
-        return {
-            "razorpay_order_id": plink["id"],
-            "payment_link": plink["short_url"],
-            "stubbed": False,
-        }
 
     # No live Razorpay credentials yet — produce a clearly-marked stub so the
     # rest of the checkout flow (order creation, status polling, audit trail,
