@@ -6,12 +6,11 @@ import { ArrowLeftIcon, StoreIcon } from "lucide-react";
 
 import { listMerchantProducts, listMerchants } from "@/lib/api";
 import type { Merchant, Product } from "@/lib/types";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Spinner } from "@/components/ui/spinner";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { MerchantProductCard } from "@/components/merchants/merchant-product-card";
+import { PageBar, PageBody, PageHeading } from "@/components/page-shell";
+import { Button } from "@/components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function MerchantDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -33,50 +32,94 @@ export default function MerchantDetailPage() {
     })();
   }, [params.slug]);
 
+  const loading = merchant === undefined || (merchant !== null && products === null);
+
+  const priceFloor = React.useMemo(() => {
+    if (!products || products.length === 0) return null;
+    return Math.min(...products.map((p) => p.price_paise / 100));
+  }, [products]);
+
   return (
     <div className="flex h-svh flex-col">
-      <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b px-4 lg:px-6">
-        <SidebarTrigger className="-ml-1" />
-        <Separator orientation="vertical" className="mx-1 h-4 data-vertical:self-auto" />
-        <Button size="icon-sm" variant="ghost" onClick={() => router.push("/dashboard/merchants")}>
-          <ArrowLeftIcon />
-        </Button>
-        <h1 className="text-sm font-medium">{merchant ? merchant.name : "Merchants"}</h1>
-      </header>
+      <PageBar
+        label={merchant ? merchant.name : "Merchant"}
+        leading={
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Back to merchants"
+            onClick={() => router.push("/dashboard/merchants")}
+          >
+            <ArrowLeftIcon />
+          </Button>
+        }
+      />
 
-      <div className="flex-1 overflow-y-auto p-4 lg:p-6">
-        {merchant === undefined || (merchant && products === null) ? (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            <Spinner className="size-5" />
-          </div>
+      <PageBody width="wide">
+        {loading ? (
+          <>
+            <Skeleton className="h-20 w-full max-w-md rounded-2xl" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-80 rounded-2xl" />
+              ))}
+            </div>
+          </>
         ) : merchant === null ? (
-          <Empty className="mx-auto max-w-md">
+          <Empty className="surface mx-auto max-w-md py-12">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <StoreIcon />
               </EmptyMedia>
               <EmptyTitle>Merchant not found</EmptyTitle>
-              <EmptyDescription>This store doesn&apos;t exist or may have been removed.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : products && products.length === 0 ? (
-          <Empty className="mx-auto max-w-md">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <StoreIcon />
-              </EmptyMedia>
-              <EmptyTitle>No products yet</EmptyTitle>
-              <EmptyDescription>{merchant.name} hasn&apos;t listed any products.</EmptyDescription>
+              <EmptyDescription>
+                This store doesn&apos;t exist or is no longer part of the marketplace.
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {products?.map((product) => (
-              <MerchantProductCard key={product.id} product={product} />
-            ))}
-          </div>
+          <>
+            <PageHeading
+              eyebrow="Store"
+              title={
+                <span className="flex items-center gap-3">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand ring-1 ring-brand/15">
+                    <StoreIcon className="size-5" />
+                  </span>
+                  {merchant.name}
+                </span>
+              }
+              description={
+                products && products.length > 0
+                  ? `${products.length} product${products.length === 1 ? "" : "s"} in the catalog${
+                      priceFloor !== null ? `, starting at ₹${priceFloor.toLocaleString("en-IN")}` : ""
+                    }.`
+                  : undefined
+              }
+            />
+
+            {products && products.length === 0 ? (
+              <Empty className="surface mx-auto max-w-md py-12">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <StoreIcon />
+                  </EmptyMedia>
+                  <EmptyTitle>Nothing listed yet</EmptyTitle>
+                  <EmptyDescription>
+                    {merchant.name} hasn&apos;t added any products. Check back soon.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {products?.map((product) => (
+                  <MerchantProductCard key={product.id} product={product} />
+                ))}
+              </div>
+            )}
+          </>
         )}
-      </div>
+      </PageBody>
     </div>
   );
 }

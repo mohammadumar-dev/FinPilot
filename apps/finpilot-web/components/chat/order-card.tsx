@@ -15,7 +15,7 @@ export function OrderResultCard({ result }: { result: CreateOrderToolResult }) {
     : "Order placed";
 
   return (
-    <div className="flex w-full max-w-sm flex-col gap-3 rounded-2xl border border-border bg-card p-4">
+    <div className="surface flex w-full max-w-sm flex-col gap-3.5 p-4">
       <div className="flex items-center gap-2.5">
         <span
           className={
@@ -29,7 +29,7 @@ export function OrderResultCard({ result }: { result: CreateOrderToolResult }) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">{heading}{result.merchant_name ? ` · ${result.merchant_name}` : ""}</p>
           {result.order_id && (
-            <p className="truncate font-mono text-xs text-muted-foreground">#{result.order_id.slice(0, 8)}</p>
+            <p className="numeric truncate text-xs text-muted-foreground">#{result.order_id.slice(0, 8)}</p>
           )}
         </div>
         {result.status && (
@@ -40,7 +40,7 @@ export function OrderResultCard({ result }: { result: CreateOrderToolResult }) {
       </div>
       <div className="flex items-center justify-between gap-2">
         {result.amount_rupees != null && (
-          <span className="font-mono text-lg font-medium tabular-nums">
+          <span className="numeric text-xl font-medium">
             ₹{result.amount_rupees.toLocaleString("en-IN")}
           </span>
         )}

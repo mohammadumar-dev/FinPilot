@@ -72,7 +72,7 @@ export function ChatThread({
             <MessageScrollerItem key={m.id}>
               <Message align="start">
                 <MessageContent>
-                  <p className="max-w-[65ch] px-3 text-[0.925rem] leading-relaxed whitespace-pre-wrap">
+                  <p className="max-w-[65ch] px-1 text-[0.9375rem] leading-[1.7] whitespace-pre-wrap text-pretty">
                     <FormattedText text={m.content} />
                   </p>
                 </MessageContent>
@@ -93,7 +93,15 @@ export function ChatThread({
             <MessageScrollerItem key={m.id}>
               <Message align="start">
                 <MessageContent>
-                  <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-2">
+                  {/* A lone result shouldn't be stranded at half width in a
+                      two-column track — narrow the container instead. */}
+                  <div
+                    className={
+                      results.length === 1
+                        ? "grid w-full max-w-xs items-stretch gap-3"
+                        : "grid w-full max-w-2xl items-stretch gap-3 sm:grid-cols-2"
+                    }
+                  >
                     {results.map((p) => (
                       <ProductResultCard
                         key={p.product_id}

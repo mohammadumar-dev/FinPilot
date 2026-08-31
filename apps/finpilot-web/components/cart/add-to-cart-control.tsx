@@ -13,16 +13,29 @@ import { cn } from "@/lib/utils";
  *
  * `className` is for sizing/layout only (e.g. `w-full` when this is the
  * sole action in its row, like on the merchant grid — left as content-width
- * when it shares a row with another button, like "Buy this" in chat). */
-export function AddToCartControl({ productId, className }: { productId: string; className?: string }) {
+ * when it shares a row with another button, like "Buy this" in chat).
+ *
+ * `size="lg"` is for the product detail page, where adding to the cart is
+ * the page's primary decision and should carry the brand emphasis rather
+ * than sit at the same weight as every other control on screen. */
+export function AddToCartControl({
+  productId,
+  className,
+  size = "default",
+}: {
+  productId: string;
+  className?: string;
+  size?: "default" | "lg";
+}) {
   const { quantityFor, setQuantity } = useCart();
   const quantity = quantityFor(productId);
+  const isLarge = size === "lg";
 
   if (quantity <= 0) {
     return (
       <Button
-        size="sm"
-        variant="outline"
+        size={isLarge ? "lg" : "sm"}
+        variant={isLarge ? "brand" : "outline"}
         className={className}
         onClick={(e) => {
           e.stopPropagation();
@@ -37,11 +50,15 @@ export function AddToCartControl({ productId, className }: { productId: string; 
 
   return (
     <div
-      className={cn("flex items-center justify-between gap-1 rounded-full border border-border px-1", className)}
+      className={cn(
+        "flex items-center justify-between gap-1 rounded-full border border-border bg-background px-1",
+        isLarge && "h-9 gap-2 px-1.5",
+        className
+      )}
       onClick={(e) => e.stopPropagation()}
     >
       <Button
-        size="icon-xs"
+        size={isLarge ? "icon-sm" : "icon-xs"}
         variant="ghost"
         className="rounded-full"
         onClick={() => setQuantity(productId, quantity - 1)}
@@ -49,9 +66,16 @@ export function AddToCartControl({ productId, className }: { productId: string; 
       >
         <MinusIcon />
       </Button>
-      <span className="min-w-4 text-center text-sm font-medium tabular-nums">{quantity}</span>
+      <span
+        className={cn(
+          "numeric min-w-4 text-center text-sm font-medium",
+          isLarge && "min-w-6 text-base"
+        )}
+      >
+        {quantity}
+      </span>
       <Button
-        size="icon-xs"
+        size={isLarge ? "icon-sm" : "icon-xs"}
         variant="ghost"
         className="rounded-full"
         onClick={() => setQuantity(productId, quantity + 1)}

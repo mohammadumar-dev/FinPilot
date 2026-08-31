@@ -11,6 +11,7 @@ import { pendingMessageKey } from "@/lib/pending-message";
 import type { MessageRow } from "@/lib/types";
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatComposer } from "@/components/chat/chat-composer";
+import { PageBar } from "@/components/page-shell";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -18,8 +19,6 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 
 export default function ConversationPage() {
@@ -92,11 +91,7 @@ export default function ConversationPage() {
 
   return (
     <div className="flex h-svh flex-col">
-      <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b px-4 lg:px-6">
-        <SidebarTrigger className="-ml-1" />
-        <Separator orientation="vertical" className="mx-1 h-4 data-vertical:self-auto" />
-        <h1 className="truncate text-sm font-medium">{conversation?.title ?? "New chat"}</h1>
-      </header>
+      <PageBar label={conversation?.title ?? "New chat"} />
 
       {loading ? (
         <div className="flex flex-1 items-center justify-center text-muted-foreground">
@@ -106,12 +101,12 @@ export default function ConversationPage() {
         <MessageScrollerProvider autoScroll defaultScrollPosition="end">
           <MessageScroller className="flex-1">
             <MessageScrollerViewport>
-              <MessageScrollerContent className="mx-auto w-full max-w-3xl px-4 py-6">
+              <MessageScrollerContent className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-8">
                 <ChatThread messages={messages} onQuickReply={handleSend} />
                 {sending && (
-                  <div className="flex items-center gap-2 px-3 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground">
                     <SparkleIcon className="size-3.5 animate-pulse text-brand" />
-                    Thinking…
+                    <span className="animate-pulse">Thinking…</span>
                   </div>
                 )}
               </MessageScrollerContent>
@@ -121,8 +116,12 @@ export default function ConversationPage() {
         </MessageScrollerProvider>
       )}
 
-      <div className="mx-auto w-full max-w-3xl px-4 pb-4">
-        <ChatComposer onSend={handleSend} disabled={sending} />
+      {/* The composer sits on a fade so long threads scroll under it cleanly
+          instead of colliding with the input's edge. */}
+      <div className="sticky bottom-0 bg-gradient-to-t from-background via-background to-transparent pt-4">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+          <ChatComposer onSend={handleSend} disabled={sending} />
+        </div>
       </div>
     </div>
   );
