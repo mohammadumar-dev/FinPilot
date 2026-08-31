@@ -634,7 +634,27 @@ def run_agent_turn(
             logger.exception("All Groq models in the fallback chain failed for conversation %s", conversation.id)
             break
         logger.info("agent turn served by model=%s", model_used)
-        choice = response.choices[0].message
+
+        # A 200 carrying no choices is a provider returning an error payload
+        # shaped like a completion — observed from OpenRouter. Indexing it
+        # straight away raised TypeError and killed the turn, so treat it as
+        # this model failing and let another one take over.
+        choices = getattr(response, "choices", None)
+        if not choices:
+            empty_replies += 1
+            logger.warning(
+                "no choices in response from model=%s for conversation %s (attempt %d/%d)",
+                model_used,
+                conversation.id,
+                empty_replies,
+                MAX_EMPTY_REPLY_RETRIES,
+            )
+            if empty_replies <= MAX_EMPTY_REPLY_RETRIES:
+                llm_gateway.penalize_model(model_used)
+                continue
+            break
+
+        choice = choices[0].message
 
         if not choice.tool_calls:
             reply = (choice.content or "").strip()

@@ -402,10 +402,10 @@ def penalize_model(model_key: str, seconds: float = 25.0) -> None:
 
 
 def _ordered_chain() -> list[ModelLimits]:
-    # GROQ_MODEL names a preferred *model*, which may now be served by more
-    # than one provider — every bucket for it is promoted, in chain order, so
-    # the preference survives whichever providers happen to be configured.
-    preferred = settings.GROQ_MODEL
+    # The preferred model may be served by more than one provider — every
+    # bucket for it is promoted, in chain order, so the preference survives
+    # whichever providers happen to be configured.
+    preferred = settings.preferred_model
     front = [m for m in MODEL_CHAIN if m.name == preferred]
     if not front:
         return MODEL_CHAIN

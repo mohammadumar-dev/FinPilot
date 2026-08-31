@@ -19,9 +19,18 @@ class Settings(BaseSettings):
     # combination may be configured — one, two, or all three. Whichever keys
     # are present form the fallback chain; the app only fails if none are.
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "openai/gpt-oss-120b"
     NVIDIA_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
+
+    # Promoted to the front of the chain on every provider that serves it.
+    # GROQ_MODEL is the old name, kept working since it predates the chain
+    # spanning more than one provider; PREFERRED_MODEL wins when both are set.
+    PREFERRED_MODEL: str = ""
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+
+    @property
+    def preferred_model(self) -> str:
+        return self.PREFERRED_MODEL or self.GROQ_MODEL
 
     # Comma-separated model ids per provider, so a renamed or newly available
     # model is an .env edit rather than a code change.
