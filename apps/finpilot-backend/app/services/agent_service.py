@@ -65,15 +65,24 @@ def _search_catalog_tool(categories: list[str]) -> dict:
                         "type": ["integer", "null"],
                         "description": "Maximum price in rupees, if the buyer stated a budget for this item — omit or null otherwise",
                     },
+                    # Deliberately NOT an enum. This is a soft hint that
+                    # search_catalog folds into the free-text match (see the
+                    # `combined_text` note there) — it can never exclude a real
+                    # result, so a wrong guess is harmless. As a closed enum of
+                    # every category in the catalog it was actively harmful:
+                    # Groq rejected the whole turn with 400 tool_use_failed the
+                    # moment the model guessed "books" instead of "self-help",
+                    # and the 76-value list cost ~600 tokens on every single
+                    # request against an 8k tokens-per-minute budget.
                     "category": {
                         "type": ["string", "null"],
-                        "enum": categories + [None],
                         "description": (
-                            "Category filter — must be one of the exact values listed, e.g. 'footwear', "
-                            "'fragrance'. This is a closed list of the categories that actually exist; if "
-                            "nothing fits what the buyer asked for, omit/null this and rely on `query` text "
-                            "instead. Never invent a category word that isn't in the list — e.g. for "
-                            "'perfume' use 'fragrance', for 'sneakers' use 'footwear'."
+                            "Optional category hint. It only widens the search — it never filters "
+                            "results out — so a near-miss is harmless and the buyer's own words "
+                            "still decide ranking. Most useful when their wording differs from the "
+                            "catalog's ('perfume' -> fragrance, 'notebook' -> stationery, "
+                            "'sneakers' -> footwear). Existing categories: "
+                            + ", ".join(categories)
                         ),
                     },
                     "limit": {
@@ -150,15 +159,80 @@ _STATIC_TOOLS = [
 def _build_tools(db: Session) -> list[dict]:
     # Built per turn (not once at import) so a newly-seeded category shows up
     # without a process restart — it's one cheap distinct query against a
-    # small table, not worth caching.
+    # small table, not worth caching. The category list is prose in the
+    # parameter description now rather than a JSON Schema enum: as an enum a
+    # single wrong guess failed the whole request with 400 tool_use_failed,
+    # and it cost roughly four times as many tokens to say the same thing.
     categories = catalog_service.list_categories(db)
     return [_search_catalog_tool(categories), *_STATIC_TOOLS]
 
 
+# A backstop on top of the model's own confirmation rule, paired with
+# _product_was_shown() below — that pairing, not this list, is what actually
+# prevents ordering something the buyer never saw. The list had real
+# false-negatives that blocked plainly-worded confirmations ("buy all four",
+# "order them", "continue"), which surfaced as the agent silently refusing to
+# complete part of a multi-item list.
 _AFFIRMATIVE_RE = re.compile(
-    r"\b(yes|yeah|yep|yup|confirm(ed)?|go ahead|do it|buy it|place (the )?order|sure|okay|ok|sounds good|let'?s do it)\b",
-    re.IGNORECASE,
+    r"""\b(
+          yes | yeah | yep | yup | sure | okay | ok | sounds\s+good
+        | confirm(ed)?
+        | go\s+ahead | go\s+for\s+it | do\s+it | let'?s\s+do\s+it
+        | continue | proceed | carry\s+on
+        | place\s+(the\s+)?order
+        | i'?ll\s+take
+        | (buy|order|purchase|get|take)\s+
+            (it|them|all|both|these|those|everything|the\s+rest)
+    )\b""",
+    re.IGNORECASE | re.VERBOSE,
 )
+
+
+# What the model actually needs to remember about a product it showed
+# earlier: enough to name it, price it, and order it. Everything else in a
+# search_catalog row (description, sku, merchant_id, variant_group, score,
+# price_paise) is dead weight once the turn that produced it is over — and
+# it was that dead weight, replayed on every subsequent request, that pushed
+# a multi-item conversation past the 8k tokens-per-minute ceiling and made
+# the agent abandon turns mid-way. Keeping the identity fields is what lets
+# "order all of those" still resolve several turns later.
+_PRODUCT_MEMORY_FIELDS = (
+    "product_id",
+    "name",
+    "price_rupees",
+    "rating",
+    "merchant_name",
+    "category",
+    "variant_label",
+)
+
+
+def _compact_product(product: dict) -> dict:
+    return {k: product[k] for k in _PRODUCT_MEMORY_FIELDS if product.get(k) is not None}
+
+
+def _compact_tool_result(name: str, result) -> object:
+    """Shrink a stored tool result down to what still matters as history.
+
+    Only affects what gets replayed to the model — the full result stays in
+    the database, so the UI's product/order cards are unchanged.
+    """
+    if not isinstance(result, dict):
+        return result
+
+    if name == "search_catalog" and isinstance(result.get("results"), list):
+        return {
+            "results": [
+                _compact_product(item) for item in result["results"] if isinstance(item, dict)
+            ]
+        }
+
+    if name == "get_product_detail" and result.get("product_id"):
+        return _compact_product(result)
+
+    # Order/payment results are already small and every field is load-bearing
+    # (order_id, status, payment link), so they're replayed untouched.
+    return result
 
 
 def _load_history(db: Session, conversation_id: uuid.UUID) -> list[dict]:
@@ -192,11 +266,16 @@ def _load_history(db: Session, conversation_id: uuid.UUID) -> list[dict]:
                 messages.append({"role": "assistant", "content": row.content or ""})
         elif row.role == "tool":
             tc = row.tool_call or {}
+            if "result" in tc:
+                content = json.dumps(_compact_tool_result(tc.get("name", ""), tc.get("result")))
+            else:
+                # Older rows predate the stored `result` field — replay as-is.
+                content = row.content or ""
             messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": tc.get("tool_call_id", ""),
-                    "content": row.content or "",
+                    "content": content,
                 }
             )
     return messages
@@ -372,6 +451,32 @@ def _execute_tool(
     return {"error": "unknown_tool", "message": f"No such tool: {name}"}
 
 
+def _summarize_orders(placed: list[dict], existing: list[dict]) -> str:
+    """A factual, non-empty reply built from what this turn actually did.
+
+    Used when the model hands back nothing usable — either an empty completion
+    (it happens, and it surfaced to the buyer as a blank chat bubble right
+    after their orders went through) or a turn that ran out of iterations. The
+    order cards are already on screen, so this stays to one sentence and only
+    says what the cards can't: what just happened, and what to do next.
+    """
+    parts: list[str] = []
+    if placed:
+        total = sum(o.get("amount_rupees") or 0 for o in placed)
+        parts.append(
+            f"Placed {len(placed)} order{'s' if len(placed) != 1 else ''} for ₹{total:,.0f}"
+        )
+    if existing:
+        parts.append(
+            f"{len(existing)} {'was' if len(existing) == 1 else 'were'} already ordered earlier"
+        )
+
+    if not parts:
+        return "Sorry, I'm having trouble completing that right now — could you rephrase or try again?"
+
+    return " · ".join(parts) + ". You can pay for them from Orders."
+
+
 def run_agent_turn(
     db: Session,
     conversation: Conversation,
@@ -383,6 +488,12 @@ def run_agent_turn(
 
     messages = _load_history(db, conversation.id)
     tools = _build_tools(db)
+    # Tracked so that if the loop gives up part-way we can still tell the
+    # buyer what actually went through. Reporting "I'm having trouble" after
+    # committing real orders reads as total failure and invites a duplicate
+    # attempt at the items that already succeeded.
+    orders_placed: list[dict] = []
+    orders_existing: list[dict] = []
 
     for _ in range(MAX_TOOL_ITERATIONS):
         try:
@@ -401,7 +512,18 @@ def run_agent_turn(
         choice = response.choices[0].message
 
         if not choice.tool_calls:
-            reply = choice.content or ""
+            reply = (choice.content or "").strip()
+            if not reply:
+                # An empty completion with no tool calls is the model giving up
+                # silently. Storing it verbatim showed the buyer a blank bubble
+                # — worse than saying nothing, because their orders had in fact
+                # just gone through.
+                logger.warning(
+                    "empty completion with no tool calls for conversation %s; "
+                    "summarising the turn instead",
+                    conversation.id,
+                )
+                reply = _summarize_orders(orders_placed, orders_existing)
             db.add(Message(conversation_id=conversation.id, role="agent", content=reply))
             db.commit()
             return reply
@@ -437,6 +559,11 @@ def run_agent_turn(
 
         for tc in requested:
             result = _execute_tool(db, conversation, user_id, tc["name"], tc["arguments"], user_message)
+            if tc["name"] == "create_order" and result.get("order_id"):
+                if result.get("error"):
+                    orders_existing.append(result)  # duplicate_order / already_purchased
+                else:
+                    orders_placed.append(result)
             result_json = json.dumps(result)
             db.add(
                 Message(
@@ -451,7 +578,9 @@ def run_agent_turn(
 
         db.commit()
 
-    fallback = "Sorry, I'm having trouble completing that right now — could you rephrase or try again?"
+    fallback = _summarize_orders(orders_placed, orders_existing)
+    if orders_placed or orders_existing:
+        fallback += " I couldn't get through the rest just now — say \"continue\" and I'll pick up from there."
     db.add(Message(conversation_id=conversation.id, role="agent", content=fallback))
     db.commit()
     return fallback
