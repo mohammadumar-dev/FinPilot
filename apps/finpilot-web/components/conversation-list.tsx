@@ -65,8 +65,8 @@ export function ConversationList() {
   return (
     <>
       {GROUP_ORDER.filter((g) => grouped.has(g)).map((group) => (
-        <SidebarGroup key={group}>
-          <SidebarGroupLabel>{group}</SidebarGroupLabel>
+        <SidebarGroup key={group} className="py-1">
+          <SidebarGroupLabel className="section-label px-3">{group}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {grouped.get(group)!.map((conv) => (
@@ -75,7 +75,13 @@ export function ConversationList() {
                     isActive={activeId === conv.id}
                     render={<Link href={`/dashboard/c/${conv.id}`} />}
                   >
-                    <MessageCircleIcon />
+                    {/* The icon is a quiet row marker, not content — it only
+                        takes brand colour on the conversation you're in. */}
+                    <MessageCircleIcon
+                      className={
+                        activeId === conv.id ? "text-brand" : "text-muted-foreground/70"
+                      }
+                    />
                     <span className="truncate">{conv.title ?? "New chat"}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

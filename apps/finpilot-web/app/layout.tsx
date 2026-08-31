@@ -4,6 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -30,7 +31,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "FinPilot",
-  description: "An AI shopping agent that finds and buys the best option for you.",
+  description:
+    "An AI shopping agent that finds and buys the best option for you.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -45,12 +47,20 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         geistMono.variable,
         fraunces.variable,
         "font-sans",
-        inter.variable
+        inter.variable,
       )}
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <AuthProvider>{children}</AuthProvider>
-        <Toaster />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <AuthProvider>{children}</AuthProvider>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );
