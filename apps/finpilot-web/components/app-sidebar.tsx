@@ -8,6 +8,8 @@ import { SparkleIcon, SquarePenIcon, PackageIcon, ShoppingCartIcon, StoreIcon } 
 import { useCart } from "@/lib/cart-context";
 import { NavUser } from "@/components/nav-user";
 import { ConversationList } from "@/components/conversation-list";
+import { RecentChatsDialog } from "@/components/recent-chats-dialog";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Sidebar,
   SidebarContent,
@@ -25,24 +27,28 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { count } = useCart();
 
   return (
-    <Sidebar collapsible="offcanvas" {...props}>
+    <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
+              size="lg"
               className="data-[slot=sidebar-menu-button]:p-1.5!"
               render={<Link href="/dashboard" />}
             >
-              <span className="flex size-6 items-center justify-center rounded-md bg-brand text-brand-foreground">
-                <SparkleIcon className="size-3.5!" />
+              <span className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-md bg-brand text-brand-foreground group-data-[collapsible=icon]:size-5">
+                <SparkleIcon className="size-4! group-data-[collapsible=icon]:size-3!" />
               </span>
-              <span className="font-heading text-base italic">FinPilot</span>
+              <span className="font-heading text-base italic group-data-[collapsible=icon]:hidden">
+                FinPilot
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
+              tooltip="New chat"
               render={<Link href="/dashboard" />}
               className="border border-border bg-background hover:bg-muted"
             >
@@ -50,10 +56,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <span>New chat</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <SidebarMenuItem className="hidden group-data-[collapsible=icon]:flex">
+            <RecentChatsDialog />
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <ConversationList />
+        <div className="group-data-[collapsible=icon]:hidden">
+          <ConversationList />
+        </div>
       </SidebarContent>
       <SidebarSeparator />
       <SidebarFooter>
@@ -79,6 +90,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <PackageIcon />
               <span>Orders</span>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <ThemeToggle />
           </SidebarMenuItem>
         </SidebarMenu>
         <NavUser />

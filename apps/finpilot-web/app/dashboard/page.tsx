@@ -10,9 +10,11 @@ import { useConversations } from "@/lib/conversations-context";
 import { createConversation, ApiError } from "@/lib/api";
 import { pendingMessageKey } from "@/lib/pending-message";
 import { ChatComposer } from "@/components/chat/chat-composer";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { PageBar } from "@/components/page-shell";
 
+/** Openers that show the agent's actual range: a multi-item budgeted list,
+ * an open-ended gift ask, and a single capped purchase. Each one is a real
+ * sentence a buyer would type, not a feature label. */
 const SUGGESTIONS = [
   "Running shoes under ₹2,000, wireless earbuds under ₹2,500, and a book on habits under ₹500",
   "What's a good gift under ₹1,000?",
@@ -47,40 +49,42 @@ export default function NewChatPage() {
 
   return (
     <div className="flex h-svh flex-col">
-      <header className="flex h-(--header-height) shrink-0 items-center gap-2 px-4 lg:px-6">
-        <SidebarTrigger className="-ml-1" />
-        <Separator orientation="vertical" className="mx-1 h-4 data-vertical:self-auto" />
-        <h1 className="text-sm font-medium text-muted-foreground">New chat</h1>
-      </header>
+      <PageBar label="New chat" />
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4 pb-24">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-brand text-brand-foreground">
-            <SparkleIcon className="size-5" />
-          </span>
-          <h2 className="font-heading text-3xl italic">
-            Hey <span className="capitalize">{greetingName}</span>, what are you after?
-          </h2>
-          <p className="max-w-md text-sm text-balance text-muted-foreground">
-            One chat, every store — tell me what you want and your budget, and I&apos;ll find the best-rated
-            option across the whole marketplace and buy it for you.
-          </p>
-        </div>
+      <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-10">
+        <div className="flex w-full max-w-2xl flex-col items-center gap-8">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <span className="flex size-12 items-center justify-center rounded-2xl bg-brand text-brand-foreground shadow-sm ring-1 ring-brand/20">
+              <SparkleIcon className="size-6" />
+            </span>
+            <h1 className="font-heading text-[2rem] leading-tight tracking-tight text-balance italic">
+              Hey <span className="capitalize">{greetingName}</span>, what are you after?
+            </h1>
+            <p className="max-w-md text-sm leading-relaxed text-balance text-muted-foreground">
+              One chat, every store. Tell me what you want and your budget — I&apos;ll find the
+              best-rated option across the marketplace and buy it for you.
+            </p>
+          </div>
 
-        <div className="w-full max-w-2xl">
-          <ChatComposer onSend={handleSend} disabled={sending} />
-          <div className="mt-3 flex flex-wrap justify-center gap-2">
-            {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                disabled={sending}
-                onClick={() => handleSend(s)}
-                className="rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              >
-                {s}
-              </button>
-            ))}
+          <div className="flex w-full flex-col gap-4">
+            <ChatComposer onSend={handleSend} disabled={sending} autoFocus />
+
+            <div className="flex flex-col gap-2.5">
+              <span className="section-label text-center">Try one of these</span>
+              <div className="flex flex-wrap justify-center gap-2">
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={sending}
+                    onClick={() => handleSend(s)}
+                    className="max-w-full truncate rounded-full border border-border bg-card px-3.5 py-2 text-xs text-muted-foreground shadow-sm transition-all hover:-translate-y-px hover:border-brand/30 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>

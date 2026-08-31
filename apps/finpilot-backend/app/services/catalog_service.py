@@ -52,6 +52,35 @@ def _word_boundary(word: str) -> str:
     return rf"\y{base}e?s?\y"
 
 
+# Category values are a small controlled vocabulary of slugs ("smartphones",
+# "car-accessories", "self-help"), not free text, so a substring test is both
+# safe and more accurate there than the word-boundary match used on names and
+# descriptions: \yphone\y never matched "smartphones", which is why searching
+# "smart phone" surfaced a Car Phone *Mount* — its name has "Phone" as a whole
+# word — while the actual phones scored nothing at all.
+#
+# A plain substring test is too loose in the other direction, though: "wall"
+# (wall clock) is inside "wallets", and "table" is inside "tablets". The term
+# has to line up with the *end* of a slug component — the head noun — which is
+# what makes "smartphones" a phone and "laptops" a laptop, while leaving those
+# prefix collisions out.
+_CATEGORY_COMPOUND_MIN_LEN = 4
+
+
+def _category_contains(category_text: str, singular_term: str) -> bool:
+    for component in re.split(r"[^a-z0-9]+", category_text.lower()):
+        if not component:
+            continue
+        if component in (singular_term, f"{singular_term}s", f"{singular_term}es"):
+            return True
+        # Compound head-noun match: "smartphones" ends with "phone(s)".
+        if len(singular_term) >= _CATEGORY_COMPOUND_MIN_LEN and re.search(
+            rf"{re.escape(singular_term)}e?s?$", component
+        ):
+            return True
+    return False
+
+
 def _matched_word_tiers(product: Product, merchant_name: str, terms: list[str]) -> tuple[int, int, int, int]:
     """(category_count, name_count, description_count, merchant_only_count).
 
@@ -84,8 +113,9 @@ def _matched_word_tiers(product: Product, merchant_name: str, terms: list[str]) 
     merchant_text = (merchant_name or "").lower()
     tier_category = tier_name = tier_description = tier_merchant = 0
     for t in terms:
-        pattern = rf"\b{re.escape(_singular(t.lower()))}e?s?\b"
-        if re.search(pattern, category_text):
+        singular = _singular(t.lower())
+        pattern = rf"\b{re.escape(singular)}e?s?\b"
+        if _category_contains(category_text, singular):
             tier_category += 1
         elif re.search(pattern, name_text):
             tier_name += 1
@@ -120,23 +150,41 @@ def search_catalog(
     # values (e.g. "self-help") — a wrong guess must never exclude a real match.
     # So both `query` and `category` feed the same per-word OR match against
     # name/description/category, instead of category being a separate hard AND.
-    combined_text = f"{query} {category}" if category else query
-    search_terms: list[str] = []
-    if combined_text.strip():
-        # Match per word, not the whole phrase as one substring — "habits book"
-        # should still find a product named "Atomic Habits" whose description
-        # never contains that exact phrase. Short filler words (a, on, the, for,
-        # …) are dropped so they don't dilute relevance.
-        words = [w for w in re.findall(r"\w+", combined_text) if len(w) >= 3]
-        search_terms = words or [combined_text]
+    #
+    # Crucially the two are only pooled for *recall* (which rows are candidates),
+    # never for *ranking*. Ranking on the pooled words let a plausible-but-wrong
+    # category delete the right answer: "book on habits" + category="non-fiction"
+    # scored "non"/"fiction" as category-tier hits for Thinking, Fast and Slow,
+    # which set best_category_tier=2 and made the cutoff below drop Atomic Habits
+    # — a self-help book, and the only real match — leaving the agent to tell the
+    # buyer it isn't in the catalog at all. Tiers therefore come from the buyer's
+    # own words only.
+    query_words = [w for w in re.findall(r"\w+", query) if len(w) >= 3]
+    category_words = [w for w in re.findall(r"\w+", category or "") if len(w) >= 3]
+
+    # Match per word, not the whole phrase as one substring — "habits book"
+    # should still find a product named "Atomic Habits" whose description
+    # never contains that exact phrase. Short filler words (a, on, the, for,
+    # …) are dropped so they don't dilute relevance.
+    if not query_words and query.strip():
+        query_words = [query.strip()]
+
+    recall_terms = query_words + [w for w in category_words if w not in query_words]
+    # Only the buyer's own words decide relevance tiers.
+    search_terms: list[str] = query_words
+
+    if recall_terms:
         word_clauses = [
             or_(
                 Product.name.op("~*")(_word_boundary(w)),
                 Product.description.op("~*")(_word_boundary(w)),
-                Product.category.op("~*")(_word_boundary(w)),
+                # Mirrors _category_contains so recall and ranking agree.
+                # Deliberately looser than _category_contains: recall may
+                # over-include (ranking then decides), it must never under-include.
+                Product.category.ilike(f"%{_singular(w.lower())}%"),
                 Merchant.name.op("~*")(_word_boundary(w)),
             )
-            for w in search_terms
+            for w in recall_terms
         ]
         q = q.filter(or_(*word_clauses))
 
