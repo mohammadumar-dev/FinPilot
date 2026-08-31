@@ -258,6 +258,20 @@ def _seconds_until_any_model_free(estimated_tokens: int) -> float:
     )
 
 
+def penalize_model(model_name: str, seconds: float = 25.0) -> None:
+    """Bench a model that answered but produced nothing usable.
+
+    An empty completion with no tool calls is a model-quality failure, not a
+    quota one — the API returned 200, so none of the reactive 429/400 paths
+    fire and the same model would be picked again on the retry. Cooling it
+    down routes the next attempt to a different model's bucket, which is the
+    whole point of having a chain.
+    """
+    state = _states.get(model_name)
+    if state is not None:
+        state.cool_down(seconds)
+
+
 def _ordered_chain() -> list[ModelLimits]:
     # The configured GROQ_MODEL (default openai/gpt-oss-120b) goes first if
     # it's one of the known chat-capable models; the rest of the chain

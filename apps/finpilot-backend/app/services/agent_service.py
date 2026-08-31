@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 # request; each iteration is one LLM call, so the cap still bounds cost/time.
 MAX_TOOL_ITERATIONS = 12
 MAX_SEARCH_LIMIT = 20
+# A model that returns 200 with neither content nor tool calls has quit
+# mid-task. Retrying on a different model recovers the turn; the cap keeps a
+# persistently broken model from burning the whole iteration budget.
+MAX_EMPTY_REPLY_RETRIES = 2
 
 SYSTEM_PROMPT = """You are the FinPilot shopping assistant. You have access to a single marketplace catalog spanning every merchant on the platform (footwear, apparel, computer accessories, mobiles/laptops, groceries, books, and more) — the buyer can shop across all of them in this one conversation, the same way they'd shop different stores in one Amazon-style marketplace.
 
@@ -451,7 +455,11 @@ def _execute_tool(
     return {"error": "unknown_tool", "message": f"No such tool: {name}"}
 
 
-def _summarize_orders(placed: list[dict], existing: list[dict]) -> str:
+def _summarize_turn(
+    products_found: list[str],
+    placed: list[dict],
+    existing: list[dict],
+) -> str:
     """A factual, non-empty reply built from what this turn actually did.
 
     Used when the model hands back nothing usable — either an empty completion
@@ -471,10 +479,20 @@ def _summarize_orders(placed: list[dict], existing: list[dict]) -> str:
             f"{len(existing)} {'was' if len(existing) == 1 else 'were'} already ordered earlier"
         )
 
-    if not parts:
-        return "Sorry, I'm having trouble completing that right now — could you rephrase or try again?"
+    if parts:
+        return " · ".join(parts) + ". You can pay for them from Orders."
 
-    return " · ".join(parts) + ". You can pay for them from Orders."
+    # No orders, but products are already on screen as cards — pointing at
+    # them beats apologising over a screen full of results.
+    if products_found:
+        if len(products_found) == 1:
+            return f"Here's what I found — **{products_found[0]}**. Want me to order it?"
+        return (
+            f"Here are the {len(products_found)} matches I found. "
+            "Tell me which ones you'd like and I'll order them."
+        )
+
+    return "Sorry, I'm having trouble completing that right now — could you rephrase or try again?"
 
 
 def run_agent_turn(
@@ -494,6 +512,8 @@ def run_agent_turn(
     # attempt at the items that already succeeded.
     orders_placed: list[dict] = []
     orders_existing: list[dict] = []
+    products_found: list[str] = []
+    empty_replies = 0
 
     for _ in range(MAX_TOOL_ITERATIONS):
         try:
@@ -514,16 +534,25 @@ def run_agent_turn(
         if not choice.tool_calls:
             reply = (choice.content or "").strip()
             if not reply:
-                # An empty completion with no tool calls is the model giving up
-                # silently. Storing it verbatim showed the buyer a blank bubble
-                # — worse than saying nothing, because their orders had in fact
-                # just gone through.
+                # An empty completion with no tool calls is the model quitting
+                # mid-task: it returns 200, so no error path fires, and the
+                # turn silently ends. Seen in practice as two of three searches
+                # done and nothing said. Bench that model and let a different
+                # one pick the work up — retrying is what finishes the list.
+                empty_replies += 1
                 logger.warning(
-                    "empty completion with no tool calls for conversation %s; "
-                    "summarising the turn instead",
+                    "empty completion from model=%s for conversation %s (attempt %d/%d)",
+                    model_used,
                     conversation.id,
+                    empty_replies,
+                    MAX_EMPTY_REPLY_RETRIES,
                 )
-                reply = _summarize_orders(orders_placed, orders_existing)
+                if empty_replies <= MAX_EMPTY_REPLY_RETRIES:
+                    llm_gateway.penalize_model(model_used)
+                    continue
+                # Out of retries: say what the turn actually achieved rather
+                # than apologising over a screen full of results.
+                reply = _summarize_turn(products_found, orders_placed, orders_existing)
             db.add(Message(conversation_id=conversation.id, role="agent", content=reply))
             db.commit()
             return reply
@@ -564,6 +593,11 @@ def run_agent_turn(
                     orders_existing.append(result)  # duplicate_order / already_purchased
                 else:
                     orders_placed.append(result)
+            elif tc["name"] == "search_catalog":
+                for item in result.get("results", []):
+                    name = item.get("name")
+                    if name and name not in products_found:
+                        products_found.append(name)
             result_json = json.dumps(result)
             db.add(
                 Message(
@@ -578,7 +612,7 @@ def run_agent_turn(
 
         db.commit()
 
-    fallback = _summarize_orders(orders_placed, orders_existing)
+    fallback = _summarize_turn(products_found, orders_placed, orders_existing)
     if orders_placed or orders_existing:
         fallback += " I couldn't get through the rest just now — say \"continue\" and I'll pick up from there."
     db.add(Message(conversation_id=conversation.id, role="agent", content=fallback))
