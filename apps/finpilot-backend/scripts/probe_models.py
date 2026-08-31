@@ -143,19 +143,53 @@ def probe(provider_name: str, model: str, tools: list[dict]) -> Result:
             valid += 1
 
     tokens = getattr(getattr(response, "usage", None), "total_tokens", 0) or 0
-    note = "" if calls else f"text-only: {(message.content or '')[:60]!r}"
-    return Result(provider_name, model, True, len(calls), valid, elapsed, tokens, note)
+    if not calls:
+        note = f"text-only: {(message.content or '')[:60]!r}"
+        return Result(provider_name, model, True, 0, 0, elapsed, tokens, note)
+
+    # Round two: replay the tool calls and their results, exactly as the agent
+    # does on every turn after the first. Testing only the opening call hides a
+    # whole class of failure — Gemini 3.x emits tool calls happily, then
+    # rejects its own calls coming back ("missing a thought_signature"), so a
+    # single-shot probe rates it excellent and the agent breaks on call two.
+    followup = [
+        *PROBE_MESSAGES,
+        message.model_dump(exclude_none=True),
+        *[
+            {
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": json.dumps({"results": [{"product_id": "p1", "name": "Example"}]}),
+            }
+            for call in calls
+        ],
+    ]
+    try:
+        second = _client(provider_name).chat.completions.create(
+            model=model, messages=followup, tools=tools, tool_choice="auto", temperature=0.3
+        )
+        if not getattr(second, "choices", None):
+            raise RuntimeError("no choices on the follow-up call")
+        tokens += getattr(getattr(second, "usage", None), "total_tokens", 0) or 0
+    except Exception as exc:  # noqa: BLE001 - failing round two makes it unusable
+        return Result(
+            provider_name, model, False, len(calls), valid,
+            time.monotonic() - started, tokens,
+            f"round 2 failed — {type(exc).__name__}: {str(exc)[:70]}",
+        )
+
+    return Result(provider_name, model, True, len(calls), valid, time.monotonic() - started, tokens, "")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", help="groq | nvidia | openrouter (default: all configured)")
+    parser.add_argument("--provider", help="groq | nvidia | openrouter | gemini (default: all configured)")
     parser.add_argument("--models", help="comma-separated model ids to probe instead of discovering")
     parser.add_argument("--limit", type=int, default=25, help="max models per provider")
     args = parser.parse_args()
 
     if not PROVIDERS:
-        print("No provider configured. Set GROQ_API_KEY, NVIDIA_API_KEY or OPENROUTER_API_KEY.")
+        print("No provider configured. Set GROQ_API_KEY, NVIDIA_API_KEY, OPENROUTER_API_KEY or GEMINI_API_KEY.")
         return 1
 
     names = [args.provider] if args.provider else sorted(PROVIDERS)
@@ -230,7 +264,12 @@ def _report(results: list[Result]) -> None:
         for r in good:
             by_provider.setdefault(r.provider, []).append(r)
         for provider, rows in by_provider.items():
-            env = {"groq": "GROQ_MODELS", "nvidia": "NVIDIA_MODELS", "openrouter": "OPENROUTER_MODELS"}[provider]
+            env = {
+                "groq": "GROQ_MODELS",
+                "nvidia": "NVIDIA_MODELS",
+                "openrouter": "OPENROUTER_MODELS",
+                "gemini": "GEMINI_MODELS",
+            }[provider]
             print(f"  {env}={','.join(r.model for r in rows[:4])}")
     else:
         print("\nNo model completed all three searches in one turn.")

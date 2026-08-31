@@ -696,8 +696,18 @@ def run_agent_turn(
         )
         db.flush()
 
-        messages.append(
-            {
+        # Replay the provider's own message object rather than a hand-rebuilt
+        # dict. Rebuilding kept only id/name/arguments and silently dropped
+        # any provider-specific fields travelling with the call — which is how
+        # Gemini 3.x turns rejected their own tool calls on the very next
+        # request ("Function call is missing a thought_signature"). If a
+        # different provider serves the next call and objects to a field it
+        # doesn't know, that surfaces as a retryable 400 and the chain moves
+        # on, so preserving them is the safer default either way.
+        try:
+            assistant_message = choice.model_dump(exclude_none=True)
+        except AttributeError:  # a plain dict/stub, e.g. under test
+            assistant_message = {
                 "role": "assistant",
                 "content": choice.content,
                 "tool_calls": [
@@ -709,7 +719,8 @@ def run_agent_turn(
                     for tc in requested
                 ],
             }
-        )
+        assistant_message.setdefault("role", "assistant")
+        messages.append(assistant_message)
 
         for tc in requested:
             result = _execute_tool(db, conversation, user_id, tc["name"], tc["arguments"], buyer_confirmed)

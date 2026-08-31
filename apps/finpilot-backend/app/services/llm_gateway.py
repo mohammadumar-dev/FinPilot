@@ -106,6 +106,15 @@ def _build_providers() -> dict[str, Provider]:
                 "X-Title": settings.OPENROUTER_APP_TITLE,
             },
         )
+    if settings.GEMINI_API_KEY:
+        # Gemini's native API has its own request shape, but Google publishes
+        # an OpenAI-compatible surface at this path — so it joins the chain on
+        # the same terms as the rest, with no special-casing anywhere else.
+        providers["gemini"] = Provider(
+            name="gemini",
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=settings.GEMINI_API_KEY,
+        )
     return providers
 
 
@@ -129,6 +138,10 @@ def _build_chain(providers: dict[str, Provider]) -> list[ModelLimits]:
     if "openrouter" in providers:
         per_provider.append(
             [ModelLimits("openrouter", m) for m in _split(settings.OPENROUTER_MODELS)]
+        )
+    if "gemini" in providers:
+        per_provider.append(
+            [ModelLimits("gemini", m) for m in _split(settings.GEMINI_MODELS)]
         )
 
     chain: list[ModelLimits] = []
@@ -165,8 +178,8 @@ def _log_chain_once() -> None:
         )
     else:
         logger.warning(
-            "No LLM provider configured — set GROQ_API_KEY, NVIDIA_API_KEY or "
-            "OPENROUTER_API_KEY. Chat will fail until one is present."
+            "No LLM provider configured — set GROQ_API_KEY, NVIDIA_API_KEY, "
+            "OPENROUTER_API_KEY or GEMINI_API_KEY. Chat will fail until one is present."
         )
 
 _RETRYABLE_STATUS = {408, 413, 429, 500, 502, 503, 504}
@@ -204,11 +217,26 @@ _MAX_CHAIN_WAIT_SECONDS = 12.0
 # instead of falling through to the next model.
 _RETRYABLE_BAD_REQUEST_CODES = {"output_parse_failed", "tool_use_failed"}
 
+# Same idea, reported as a status rather than a code. Gemini answers
+# INVALID_ARGUMENT when a replayed tool call lacks provider-specific state it
+# expects (thought_signature). Our request is well-formed for every other
+# provider, so this is a "this model can't take it" case: fall through rather
+# than abort a turn that may already have placed orders.
+_RETRYABLE_BAD_REQUEST_STATUSES = {"INVALID_ARGUMENT"}
+
 
 def _is_retryable_bad_request(exc: APIStatusError) -> bool:
-    body = exc.body if isinstance(exc.body, dict) else {}
+    body = exc.body
+    # Gemini returns a list of error objects where the others return a dict.
+    if isinstance(body, list):
+        body = body[0] if body and isinstance(body[0], dict) else {}
+    if not isinstance(body, dict):
+        return False
     error = body.get("error") if isinstance(body.get("error"), dict) else {}
-    return error.get("code") in _RETRYABLE_BAD_REQUEST_CODES
+    return (
+        error.get("code") in _RETRYABLE_BAD_REQUEST_CODES
+        or error.get("status") in _RETRYABLE_BAD_REQUEST_STATUSES
+    )
 
 
 class _ModelState:
@@ -433,7 +461,7 @@ def chat_completion_with_fallback(
     if not MODEL_CHAIN:
         raise RuntimeError(
             "No LLM provider configured. Set at least one of GROQ_API_KEY, "
-            "NVIDIA_API_KEY or OPENROUTER_API_KEY."
+            "NVIDIA_API_KEY, OPENROUTER_API_KEY or GEMINI_API_KEY."
         )
     estimated_tokens = _estimate_tokens(messages, tools)
     last_error: Exception | None = None

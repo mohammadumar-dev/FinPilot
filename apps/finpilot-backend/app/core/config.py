@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     NVIDIA_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
 
     # Promoted to the front of the chain on every provider that serves it.
     # GROQ_MODEL is the old name, kept working since it predates the chain
@@ -37,6 +38,10 @@ class Settings(BaseSettings):
     GROQ_MODELS: str = "openai/gpt-oss-120b,qwen/qwen3.8-27b,qwen/qwen3.6-27b,openai/gpt-oss-20b"
     NVIDIA_MODELS: str = "openai/gpt-oss-120b,nvidia/llama-3.3-nemotron-super-49b-v1.5"
     OPENROUTER_MODELS: str = "openai/gpt-oss-120b"
+    # Flash tiers first: fastest, and the most generous free quota. Google
+    # retires ids briskly — 2.5-flash and 2.5-pro already 404 — so re-check
+    # with scripts/probe_models.py rather than trusting this list.
+    GEMINI_MODELS: str = "gemini-3.5-flash-lite,gemini-3.5-flash,gemini-3.6-flash"
 
     # Sent by OpenRouter's API for attribution; harmless elsewhere.
     OPENROUTER_APP_URL: str = "http://localhost:3000"
