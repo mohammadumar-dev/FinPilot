@@ -1,6 +1,7 @@
 # Backend (Python)
 apps/finpilot-backend/.venv/
 apps/finpilot-backend/.env
+apps/finpilot-backend/.env.render
 apps/finpilot-backend/__pycache__/
 **/__pycache__/
 *.pyc
