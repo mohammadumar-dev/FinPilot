@@ -56,5 +56,7 @@ app.include_router(webhooks.router)
 
 
 @app.get("/health")
+@app.head("/health")  # uptime monitors commonly probe with HEAD, not GET —
+# FastAPI/Starlette doesn't infer HEAD support from a GET route on its own.
 def health() -> dict[str, str]:
     return {"status": "ok"}
