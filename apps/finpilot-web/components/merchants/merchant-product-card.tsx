@@ -4,6 +4,7 @@ import Link from "next/link";
 import { StarIcon } from "lucide-react";
 
 import { AddToCartControl } from "@/components/cart/add-to-cart-control";
+import { Badge } from "@/components/ui/badge";
 import { ProductImage } from "@/components/product-image";
 import type { Product } from "@/lib/types";
 
@@ -20,6 +21,8 @@ import type { Product } from "@/lib/types";
  * wrapping put the cart <button> inside an <a> — invalid, and it swallowed
  * the button's own clicks. */
 export function MerchantProductCard({ product }: { product: Product }) {
+  const outOfStock = product.stock_quantity <= 0;
+
   return (
     <article className="surface-interactive group relative flex h-full flex-col overflow-hidden">
       <div className="relative">
@@ -29,11 +32,23 @@ export function MerchantProductCard({ product }: { product: Product }) {
           alt={product.name}
           className="rounded-none"
         />
-        {product.category && (
-          <span className="absolute top-2.5 left-2.5 rounded-full bg-background/85 px-2.5 py-1 text-[0.6875rem] font-medium capitalize shadow-sm ring-1 ring-border/60 backdrop-blur-sm">
-            {product.category}
-          </span>
-        )}
+        <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5">
+          {product.category && (
+            <span className="rounded-full bg-background/85 px-2.5 py-1 text-[0.6875rem] font-medium capitalize shadow-sm ring-1 ring-border/60 backdrop-blur-sm">
+              {product.category}
+            </span>
+          )}
+          {product.is_on_offer && (
+            <Badge variant="outline" className="border-transparent bg-success/15 text-success backdrop-blur-sm">
+              -{product.discount_pct}%
+            </Badge>
+          )}
+          {outOfStock && (
+            <Badge variant="outline" className="border-transparent bg-destructive/10 text-destructive backdrop-blur-sm">
+              Out of stock
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-4">
@@ -57,8 +72,15 @@ export function MerchantProductCard({ product }: { product: Product }) {
 
         <div className="mt-auto flex flex-col gap-3 pt-1">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="numeric text-base font-medium">
-              ₹{(product.price_paise / 100).toLocaleString("en-IN")}
+            <span className="flex items-baseline gap-1.5">
+              <span className="numeric text-base font-medium">
+                ₹{(product.price_paise / 100).toLocaleString("en-IN")}
+              </span>
+              {product.is_on_offer && product.original_price_rupees != null && (
+                <span className="numeric text-xs text-muted-foreground line-through">
+                  ₹{product.original_price_rupees.toLocaleString("en-IN")}
+                </span>
+              )}
             </span>
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <StarIcon className="size-3 fill-warning text-warning" />
@@ -67,7 +89,7 @@ export function MerchantProductCard({ product }: { product: Product }) {
           </div>
           {/* Lifted above the stretched-link overlay so it stays clickable. */}
           <div className="relative z-10">
-            <AddToCartControl productId={product.id} className="w-full" />
+            <AddToCartControl productId={product.id} className="w-full" maxQuantity={product.stock_quantity} />
           </div>
         </div>
       </div>

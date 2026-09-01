@@ -17,19 +17,28 @@ import { cn } from "@/lib/utils";
  *
  * `size="lg"` is for the product detail page, where adding to the cart is
  * the page's primary decision and should carry the brand emphasis rather
- * than sit at the same weight as every other control on screen. */
+ * than sit at the same weight as every other control on screen.
+ *
+ * `maxQuantity` is a display-side cap only (order_service is the real
+ * enforcement point, re-validated at checkout) — omit it where the caller
+ * doesn't have a stock figure handy; 0 renders a disabled "Out of stock"
+ * state instead of the normal add button. */
 export function AddToCartControl({
   productId,
   className,
   size = "default",
+  maxQuantity,
 }: {
   productId: string;
   className?: string;
   size?: "default" | "lg";
+  maxQuantity?: number;
 }) {
   const { quantityFor, setQuantity } = useCart();
   const quantity = quantityFor(productId);
   const isLarge = size === "lg";
+  const outOfStock = maxQuantity !== undefined && maxQuantity <= 0;
+  const atCap = maxQuantity !== undefined && quantity >= maxQuantity;
 
   if (quantity <= 0) {
     return (
@@ -37,13 +46,14 @@ export function AddToCartControl({
         size={isLarge ? "lg" : "sm"}
         variant={isLarge ? "brand" : "outline"}
         className={className}
+        disabled={outOfStock}
         onClick={(e) => {
           e.stopPropagation();
           setQuantity(productId, 1);
         }}
       >
         <ShoppingCartIcon />
-        Add to cart
+        {outOfStock ? "Out of stock" : "Add to cart"}
       </Button>
     );
   }
@@ -78,6 +88,7 @@ export function AddToCartControl({
         size={isLarge ? "icon-sm" : "icon-xs"}
         variant="ghost"
         className="rounded-full"
+        disabled={atCap}
         onClick={() => setQuantity(productId, quantity + 1)}
         aria-label="Increase quantity"
       >

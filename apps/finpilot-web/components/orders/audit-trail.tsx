@@ -16,6 +16,18 @@ const ACTION_LABEL: Record<string, string> = {
   check_payment_status: "Checked payment status",
   payment_confirmed: "Payment confirmed",
   payment_failed: "Payment failed",
+  upsell_suggested: "Suggested a related product",
+  campaign_proposed: "Campaign proposed",
+  campaign_approved: "Campaign approved",
+  campaign_applied: "Campaign applied — went live",
+  campaign_rejected: "Campaign rejected",
+  campaign_ended: "Campaign ended",
+  ad_campaign_created: "Ad campaign created",
+  ad_campaign_paused: "Ad campaign paused",
+  ad_campaign_resumed: "Ad campaign resumed",
+  ad_campaign_ended: "Ad campaign ended",
+  ad_wallet_topped_up: "Ad wallet topped up",
+  ad_click_charged: "Sponsored click charged",
 };
 
 /** The decision trail behind an order. Drawn as a connected timeline rather

@@ -4,11 +4,11 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRightIcon, ShoppingCartIcon, XIcon } from "lucide-react";
+import { ArrowRightIcon, ShoppingCartIcon, StarIcon, XIcon } from "lucide-react";
 
 import { checkoutCart, removeCartItem } from "@/lib/api";
 import { useCart } from "@/lib/cart-context";
-import type { CartCheckoutError } from "@/lib/types";
+import type { CartCheckoutError, SearchCatalogResultItem } from "@/lib/types";
 import { AddToCartControl } from "@/components/cart/add-to-cart-control";
 import { PageBar, PageBody, PageHeading } from "@/components/page-shell";
 import { ProductImage } from "@/components/product-image";
@@ -25,6 +25,24 @@ export default function CartPage() {
 
   const total = items.reduce((sum, i) => sum + i.line_total_paise, 0);
   const unitCount = items.reduce((sum, i) => sum + i.quantity, 0);
+
+  // Each cart line carries its own cross-sell pick; flatten, drop anything
+  // already in the cart, and dedupe so the same suggestion doesn't repeat
+  // when two lines happen to share it.
+  const inCartIds = new Set(items.map((i) => i.product_id));
+  const relatedProducts = React.useMemo(() => {
+    const seen = new Set<string>();
+    const related: SearchCatalogResultItem[] = [];
+    for (const item of items) {
+      for (const p of item.related_products) {
+        if (inCartIds.has(p.product_id) || seen.has(p.product_id)) continue;
+        seen.add(p.product_id);
+        related.push(p);
+      }
+    }
+    return related.slice(0, 3);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
 
   async function handleRemove(productId: string) {
     await removeCartItem(productId);
@@ -154,10 +172,13 @@ export default function CartPage() {
                           No longer available from this merchant.
                         </p>
                       )}
+                      {!item.unavailable && item.stock_quantity <= 0 && (
+                        <p className="text-xs text-destructive">Out of stock — remove or wait for restock.</p>
+                      )}
                       {error && <p className="text-xs text-destructive">{error.message}</p>}
 
                       <div className="mt-auto flex items-end justify-between gap-3 pt-2">
-                        <AddToCartControl productId={item.product_id} />
+                        <AddToCartControl productId={item.product_id} maxQuantity={item.stock_quantity} />
                         <div className="text-right">
                           <div className="numeric text-sm font-medium">
                             ₹{(item.line_total_paise / 100).toLocaleString("en-IN")}
@@ -172,6 +193,40 @@ export default function CartPage() {
                 );
               })}
             </div>
+
+            {relatedProducts.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <p className="px-1 text-xs font-medium text-muted-foreground">You might also like</p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {relatedProducts.map((p) => (
+                    <article key={p.product_id} className="surface flex flex-col gap-2 p-3">
+                      <Link
+                        href={`/dashboard/products/${p.product_id}`}
+                        className="size-16 self-start overflow-hidden rounded-lg"
+                      >
+                        <ProductImage productId={p.product_id} hasImage={p.has_image} alt={p.name} />
+                      </Link>
+                      <Link
+                        href={`/dashboard/products/${p.product_id}`}
+                        className="text-xs leading-snug font-medium hover:text-brand"
+                      >
+                        {p.name}
+                      </Link>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="numeric text-xs font-medium">
+                          ₹{p.price_rupees.toLocaleString("en-IN")}
+                        </span>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <StarIcon className="size-3 fill-warning text-warning" />
+                          <span className="numeric">{p.rating.toFixed(1)}</span>
+                        </span>
+                      </div>
+                      <AddToCartControl productId={p.product_id} className="w-full" maxQuantity={p.stock_quantity} />
+                    </article>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Order summary — the money moment, so it carries the most weight
                 on the page and states exactly what checkout will do. */}

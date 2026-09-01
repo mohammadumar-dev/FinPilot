@@ -122,11 +122,28 @@ export function ChatThread({
           // skipped — the agent's next text message explains those. duplicate_order
           // / already_purchased carry a real order_id, so still show the card.
           if (!result || (result.error && !result.order_id)) return null;
+          const related = result.related_products ?? [];
           return (
             <MessageScrollerItem key={m.id}>
               <Message align="start">
                 <MessageContent>
-                  <OrderResultCard result={result} />
+                  <div className="flex w-full max-w-2xl flex-col gap-3">
+                    <OrderResultCard result={result} />
+                    {related.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <p className="px-1 text-xs font-medium text-muted-foreground">You might also like</p>
+                        <div className="grid w-full max-w-2xl items-stretch gap-3 sm:grid-cols-2">
+                          {related.map((p) => (
+                            <ProductResultCard
+                              key={p.product_id}
+                              product={p}
+                              onBuy={() => onQuickReply(`Yes, I'll take the ${p.name}.`)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </MessageContent>
               </Message>
             </MessageScrollerItem>

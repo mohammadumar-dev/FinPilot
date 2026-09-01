@@ -10,6 +10,7 @@ import type { ProductDetail } from "@/lib/types";
 import { AddToCartControl } from "@/components/cart/add-to-cart-control";
 import { PageBar, PageBody } from "@/components/page-shell";
 import { ProductImage } from "@/components/product-image";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -112,9 +113,26 @@ export default function ProductDetailPage() {
 
               {/* Price and the buy action read as one block — the decision point. */}
               <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-y border-border/70 py-5">
-                <span className="numeric text-3xl font-medium">
-                  ₹{product.price_rupees.toLocaleString("en-IN")}
+                <span className="flex items-baseline gap-2">
+                  <span className="numeric text-3xl font-medium">
+                    ₹{product.price_rupees.toLocaleString("en-IN")}
+                  </span>
+                  {product.is_on_offer && product.original_price_rupees != null && (
+                    <span className="numeric text-base text-muted-foreground line-through">
+                      ₹{product.original_price_rupees.toLocaleString("en-IN")}
+                    </span>
+                  )}
                 </span>
+                {product.is_on_offer && (
+                  <Badge variant="outline" className="border-transparent bg-success/15 text-success">
+                    -{product.discount_pct}%
+                  </Badge>
+                )}
+                {product.stock_quantity <= 0 && (
+                  <Badge variant="outline" className="border-transparent bg-destructive/10 text-destructive">
+                    Out of stock
+                  </Badge>
+                )}
                 <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                   <StarIcon className="size-4 fill-warning text-warning" />
                   <span className="numeric font-medium text-foreground">
@@ -123,7 +141,11 @@ export default function ProductDetailPage() {
                   <span className="text-xs">rating</span>
                 </span>
                 <div className="ml-auto">
-                  <AddToCartControl productId={product.product_id} size="lg" />
+                  <AddToCartControl
+                    productId={product.product_id}
+                    size="lg"
+                    maxQuantity={product.stock_quantity}
+                  />
                 </div>
               </div>
 
