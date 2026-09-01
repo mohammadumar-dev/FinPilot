@@ -9,8 +9,10 @@ from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
+from app.models.ad import AdWalletTopup
 from app.models.order import Order
 from app.schemas.webhook import WebhookAck
+from app.services import ads_service
 from app.services.audit_service import log_audit
 from app.services.payment_service import verify_webhook_signature
 
@@ -50,7 +52,20 @@ async def razorpay_webhook(request: Request) -> WebhookAck:
     try:
         order = db.query(Order).filter(Order.razorpay_order_id == razorpay_order_id).one_or_none()
         if order is None:
-            return WebhookAck(received=True, order_status=None)
+            # Not an order payment — check whether it's an ad-wallet top-up
+            # instead (a separate Order-shaped table; see ads_service).
+            topup = (
+                db.query(AdWalletTopup).filter(AdWalletTopup.razorpay_order_id == razorpay_order_id).one_or_none()
+            )
+            if topup is None:
+                return WebhookAck(received=True, order_status=None)
+            if event in PAID_EVENTS:
+                ads_service.confirm_topup(db, topup)
+            elif event in FAILED_EVENTS and topup.status not in ("paid", "failed"):
+                topup.status = "failed"
+                db.add(topup)
+                db.commit()
+            return WebhookAck(received=True, order_status=topup.status)
 
         if event in PAID_EVENTS:
             order.status = "paid"
