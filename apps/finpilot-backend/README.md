@@ -36,7 +36,7 @@ The seed script is idempotent (safe to re-run) and creates:
 - 2 merchants — Threadline Apparel, CircuitHub Electronics
 - 10 products each (20 total)
 - 1 agent-client (scoped API key) per merchant, with spend/rate limits — the plaintext key is printed to stdout **once**, at creation
-- 3 users, all password `Demo@1234`: buyer `admin.datainn@gmail.com`, merchant admins `admin@threadline.demo` / `admin@circuithub.demo`
+- 3 users, all password `Demo@1234`: buyer `buyer.finpilot@example.com`, merchant admins `threadline.finpilot@example.com` / `circuithub.finpilot@example.com`
 
 ## Run
 

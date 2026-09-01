@@ -14,7 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 export default function LoginPage() {
   const router = useRouter();
   const { user, loading, login } = useAuth();
-  const [email, setEmail] = React.useState("admin.datainn@gmail.com");
+  const [email, setEmail] = React.useState("buyer.finpilot@example.com");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
@@ -122,7 +122,7 @@ export default function LoginPage() {
           <dl className="flex flex-col gap-1 text-xs">
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-muted-foreground">Email</dt>
-              <dd className="numeric">admin.datainn@gmail.com</dd>
+              <dd className="numeric">buyer.finpilot@example.com</dd>
             </div>
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-muted-foreground">Password</dt>

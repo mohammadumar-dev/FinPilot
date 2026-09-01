@@ -29,7 +29,7 @@ This is the frontend half of the FinPilot monorepo — see `../finpilot-backend`
 
 4. Open [http://localhost:3000](http://localhost:3000). You'll be redirected to `/login`.
 
-   Demo buyer account (seeded by the backend): `admin.datainn@gmail.com` / `Demo@1234`.
+   Demo buyer account (seeded by the backend): `buyer.finpilot@example.com` / `Demo@1234`.
 
 ## Project structure
 

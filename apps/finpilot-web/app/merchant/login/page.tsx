@@ -14,7 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 export default function MerchantLoginPage() {
   const router = useRouter();
   const { user, loading, login } = useAuth();
-  const [email, setEmail] = React.useState("admin@stepforward.demo");
+  const [email, setEmail] = React.useState("stepforward.finpilot@example.com");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
@@ -119,7 +119,7 @@ export default function MerchantLoginPage() {
           <dl className="flex flex-col gap-1 text-xs">
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-muted-foreground">Email</dt>
-              <dd className="numeric">admin@stepforward.demo</dd>
+              <dd className="numeric">stepforward.finpilot@example.com</dd>
             </div>
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-muted-foreground">Password</dt>
