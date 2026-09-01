@@ -77,6 +77,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             variant_label: null,
             has_image: false,
             unavailable: false,
+            stock_quantity: Number.MAX_SAFE_INTEGER, // unknown until refresh() replaces this placeholder
+            related_products: [],
           },
         ];
       });
