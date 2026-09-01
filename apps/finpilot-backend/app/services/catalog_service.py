@@ -14,6 +14,24 @@ from sqlalchemy.orm import Session
 
 from app.models.merchant import Merchant
 from app.models.product import Product
+from app.services import campaign_service
+from app.services.audit_service import log_audit
+
+
+def _offer_fields(product: Product, effective_price_paise: int) -> dict:
+    """The three buyer-facing offer fields, shared by search_catalog,
+    get_related_products, and get_product_detail so a discounted product
+    never shows silently — price_paise/price_rupees become the *effective*
+    (possibly discounted) price everywhere, consistent with what checkout
+    will actually charge (see campaign_service.get_effective_price)."""
+    is_on_offer = effective_price_paise < product.price_paise
+    return {
+        "price_paise": effective_price_paise,
+        "price_rupees": round(effective_price_paise / 100, 2),
+        "is_on_offer": is_on_offer,
+        "discount_pct": round(100 - effective_price_paise / product.price_paise * 100) if is_on_offer else None,
+        "original_price_rupees": round(product.price_paise / 100, 2) if is_on_offer else None,
+    }
 
 
 def _score(product: Product, min_price: int, max_price: int) -> float:
@@ -137,7 +155,10 @@ def search_catalog(
     q = (
         db.query(Product, Merchant.name)
         .join(Merchant, Merchant.id == Product.merchant_id)
-        .filter(Product.is_active.is_(True))
+        # Out-of-stock is display-only metadata on a *direct* product-detail
+        # view (a cart line, an existing link) — never in discovery: the
+        # buyer agent should never surface something it can't actually sell.
+        .filter(Product.is_active.is_(True), Product.stock_quantity > 0)
     )
 
     if merchant_id is not None:
@@ -189,20 +210,23 @@ def search_catalog(
         q = q.filter(or_(*word_clauses))
 
     candidates = q.all()
-    if not candidates:
-        return []
+    # Deliberately not an early `return []` here even when candidates is
+    # empty — a sponsored slot (below) must still get a chance to show, an
+    # ad is not organic ranking and shouldn't be gated on it finding matches.
+    scored: list[tuple] = []
 
-    prices = [p.price_paise for p, _ in candidates]
-    min_price, max_price = min(prices), max(prices)
+    if candidates:
+        prices = [p.price_paise for p, _ in candidates]
+        min_price, max_price = min(prices), max(prices)
 
-    # Rank by relevance tier first (category > name > description > merchant
-    # name — see _matched_word_tiers), then by the rating/price formula only
-    # as the tiebreak within a tier.
-    scored = [
-        (p, merchant_name, *_matched_word_tiers(p, merchant_name, search_terms), _score(p, min_price, max_price))
-        for p, merchant_name in candidates
-    ]
-    scored.sort(key=lambda t: (t[2], t[3], t[4], t[5], t[6]), reverse=True)
+        # Rank by relevance tier first (category > name > description > merchant
+        # name — see _matched_word_tiers), then by the rating/price formula only
+        # as the tiebreak within a tier.
+        scored = [
+            (p, merchant_name, *_matched_word_tiers(p, merchant_name, search_terms), _score(p, min_price, max_price))
+            for p, merchant_name in candidates
+        ]
+        scored.sort(key=lambda t: (t[2], t[3], t[4], t[5], t[6]), reverse=True)
 
     # If a genuine category-taxonomy match exists (the buyer/agent's implied
     # category term — e.g. "smartphones" for "smart phone" — matches actual
@@ -230,14 +254,30 @@ def search_catalog(
     if best_name_tier > 0:
         scored = [t for t in scored if t[3] == best_name_tier]
 
-    return [
+    top = scored[:limit]
+
+    # Sponsored slot: at most one, and only when it's relevant to the buyer's
+    # own search terms — see ads_service.get_sponsored_candidate. A local
+    # import breaks the module cycle (ads_service imports catalog_service's
+    # word-matching helpers at its own module level; catalog_service must
+    # therefore only reach back for ads_service at call time, not import time).
+    from app.services import ads_service
+
+    organic_ids = {p.id for p, *_ in top}
+    sponsored_rows = ads_service.get_sponsored_candidate(
+        db, recall_terms, merchant_id, max_price_paise, exclude_product_ids=organic_ids, limit=1
+    )
+
+    all_products = [p for p, *_ in top] + [p for p, _mn, _c in sponsored_rows]
+    effective_prices = campaign_service.get_effective_prices(db, all_products)
+
+    results = [
         {
             "product_id": str(p.id),
             "sku": p.sku,
             "name": p.name,
             "description": p.description,
-            "price_paise": p.price_paise,
-            "price_rupees": round(p.price_paise / 100, 2),
+            **_offer_fields(p, effective_prices[str(p.id)]),
             "rating": float(p.rating),
             "category": p.category,
             "merchant_id": str(p.merchant_id),
@@ -245,9 +285,113 @@ def search_catalog(
             "variant_group": p.variant_group,
             "variant_label": p.variant_label,
             "has_image": p.has_image,
+            "stock_quantity": p.stock_quantity,
+            "score": score,
+            "is_sponsored": False,
+            "ad_campaign_id": None,
+        }
+        for p, merchant_name, _tier_cat, _tier_name, _tier_desc, _tier_merch, score in top
+    ]
+
+    # Prepended, not slotted in by relevance rank — a sponsored placement is
+    # additive to the organic shelf, never displacing a genuine top match.
+    for p, merchant_name, ad_campaign in sponsored_rows:
+        # A shown-but-not-clicked impression is free (see ads_service —
+        # only charge_click spends the wallet) but still worth counting: a
+        # merchant asking "does anyone even see this ad" needs a real
+        # number, not just clicks. Logged here rather than by each caller
+        # (the buyer chat loop, the external-agent MCP tool) since this is
+        # the one place both funnel through; the caller's own commit (each
+        # already ends its turn/tool call with one) persists it.
+        log_audit(
+            db,
+            action="ad_impression",
+            outcome="success",
+            payload={
+                "campaign_id": str(ad_campaign.id),
+                "product_id": str(p.id),
+                "merchant_id": str(p.merchant_id),
+            },
+        )
+        results.insert(
+            0,
+            {
+                "product_id": str(p.id),
+                "sku": p.sku,
+                "name": p.name,
+                "description": p.description,
+                **_offer_fields(p, effective_prices[str(p.id)]),
+                "rating": float(p.rating),
+                "category": p.category,
+                "merchant_id": str(p.merchant_id),
+                "merchant_name": merchant_name,
+                "variant_group": p.variant_group,
+                "variant_label": p.variant_label,
+                "has_image": p.has_image,
+                "stock_quantity": p.stock_quantity,
+                # Not organically ranked — this is a rating-only stand-in
+                # (_score with no price spread to normalize against) so the
+                # field stays numeric/comparable rather than null.
+                "score": _score(p, p.price_paise, p.price_paise),
+                "is_sponsored": True,
+                "ad_campaign_id": str(ad_campaign.id),
+            },
+        )
+
+    return results
+
+
+def get_related_products(db: Session, product: Product, limit: int = 3) -> list[dict]:
+    """Cross-sell candidates for one product: same merchant, same category,
+    excluding itself, ranked by the same rating/price formula used for search
+    — no separate recommender logic, just _score() applied to a narrower
+    pool. Deliberately merchant-scoped: a cross-sell suggestion has to be
+    something the buyer can add to the same checkout, not a nudge toward a
+    different store."""
+    candidates = (
+        db.query(Product, Merchant.name)
+        .join(Merchant, Merchant.id == Product.merchant_id)
+        .filter(
+            Product.is_active.is_(True),
+            Product.stock_quantity > 0,
+            Product.merchant_id == product.merchant_id,
+            Product.category == product.category,
+            Product.id != product.id,
+        )
+        .all()
+    )
+    if not candidates:
+        return []
+
+    prices = [p.price_paise for p, _ in candidates]
+    min_price, max_price = min(prices), max(prices)
+
+    scored = sorted(
+        ((p, merchant_name, _score(p, min_price, max_price)) for p, merchant_name in candidates),
+        key=lambda t: t[2],
+        reverse=True,
+    )
+
+    top = scored[:limit]
+    effective_prices = campaign_service.get_effective_prices(db, [p for p, *_ in top])
+    return [
+        {
+            "product_id": str(p.id),
+            "sku": p.sku,
+            "name": p.name,
+            "description": p.description,
+            **_offer_fields(p, effective_prices[str(p.id)]),
+            "rating": float(p.rating),
+            "category": p.category,
+            "merchant_id": str(p.merchant_id),
+            "merchant_name": merchant_name,
+            "variant_group": p.variant_group,
+            "variant_label": p.variant_label,
+            "has_image": p.has_image,
+            "stock_quantity": p.stock_quantity,
             "score": score,
         }
-        for p, merchant_name, _tier_cat, _tier_name, _tier_desc, _tier_merch, score in scored[:limit]
+        for p, merchant_name, score in top
     ]
 
 
@@ -257,8 +401,18 @@ def list_categories(db: Session) -> list[str]:
     picks a real taxonomy value (e.g. "fragrance") instead of a free-guessed
     word (e.g. "perfume" or "beauty") that doesn't exist anywhere in the data
     and can only ever match by accident (a merchant name overlap) or not at
-    all."""
-    rows = db.query(Product.category).distinct().order_by(Product.category).all()
+    all. Restricted to active products with a real category value — a
+    delisted product, or one created without a category (NULL), must never
+    surface here: a None entry crashes the join this list feeds into
+    (agent_service._search_catalog_tool), and a delisted product's category
+    isn't a real, currently-searchable taxonomy value anyway."""
+    rows = (
+        db.query(Product.category)
+        .filter(Product.is_active.is_(True), Product.category.isnot(None))
+        .distinct()
+        .order_by(Product.category)
+        .all()
+    )
     return [r[0] for r in rows]
 
 
@@ -278,13 +432,13 @@ def get_product_detail(db: Session, product_id: str) -> dict | None:
         return None
     product, merchant_name, merchant_slug = row
 
+    effective_price = campaign_service.get_effective_price(db, product)
     return {
         "product_id": str(product.id),
         "sku": product.sku,
         "name": product.name,
         "description": product.description,
-        "price_paise": product.price_paise,
-        "price_rupees": round(product.price_paise / 100, 2),
+        **_offer_fields(product, effective_price),
         "rating": float(product.rating),
         "category": product.category,
         "attributes": product.attributes,
@@ -294,4 +448,5 @@ def get_product_detail(db: Session, product_id: str) -> dict | None:
         "variant_group": product.variant_group,
         "variant_label": product.variant_label,
         "has_image": product.has_image,
+        "stock_quantity": product.stock_quantity,
     }

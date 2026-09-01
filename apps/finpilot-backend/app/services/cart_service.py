@@ -13,24 +13,38 @@ from app.models.cart_item import CartItem
 from app.models.merchant import Merchant
 from app.models.order import Order
 from app.models.product import Product
+from app.services import catalog_service
+from app.services.audit_service import log_audit
+from app.services.campaign_service import get_effective_price
 from app.services.order_service import OrderError, create_order_for_chat
 
 
-def _serialize(item: CartItem, product: Product, merchant_name: str) -> dict:
+def _serialize(item: CartItem, product: Product, merchant_name: str, db: Session) -> dict:
+    # One cross-sell suggestion per line, same-category/same-merchant, so the
+    # cart page can show a "you might also like" strip without a separate
+    # API call — cart-scale (a handful of lines) makes the per-line query
+    # cost negligible.
+    related = catalog_service.get_related_products(db, product, limit=1)
+    # Shows the price the buyer will actually be charged — the same
+    # campaign-discount lookup checkout itself uses — rather than a catalog
+    # price that could differ from the real order total at checkout time.
+    unit_price_paise = get_effective_price(db, product)
     return {
         "product_id": product.id,
         "sku": product.sku,
         "name": product.name,
-        "price_paise": product.price_paise,
-        "price_rupees": round(product.price_paise / 100, 2),
+        "price_paise": unit_price_paise,
+        "price_rupees": round(unit_price_paise / 100, 2),
         "quantity": item.quantity,
-        "line_total_paise": product.price_paise * item.quantity,
+        "line_total_paise": unit_price_paise * item.quantity,
         "merchant_id": product.merchant_id,
         "merchant_name": merchant_name,
         "category": product.category,
         "variant_label": product.variant_label,
         "has_image": product.has_image,
         "unavailable": not product.is_active,
+        "stock_quantity": product.stock_quantity,
+        "related_products": related,
     }
 
 
@@ -43,7 +57,7 @@ def get_cart(db: Session, user_id: uuid.UUID) -> list[dict]:
         .order_by(CartItem.created_at)
         .all()
     )
-    return [_serialize(item, product, merchant_name) for item, product, merchant_name in rows]
+    return [_serialize(item, product, merchant_name, db) for item, product, merchant_name in rows]
 
 
 def upsert_item(db: Session, user_id: uuid.UUID, product_id: uuid.UUID, quantity: int) -> dict | None:
@@ -75,7 +89,21 @@ def upsert_item(db: Session, user_id: uuid.UUID, product_id: uuid.UUID, quantity
     db.refresh(existing)
 
     merchant = db.get(Merchant, product.merchant_id)
-    return _serialize(existing, product, merchant.name if merchant else "")
+    serialized = _serialize(existing, product, merchant.name if merchant else "", db)
+    if serialized["related_products"]:
+        log_audit(
+            db,
+            action="upsell_suggested",
+            outcome="success",
+            reasoning="Suggested a same-category product after a cart add",
+            payload={
+                "base_product_id": str(product.id),
+                "suggested_product_ids": [r["product_id"] for r in serialized["related_products"]],
+            },
+            user_id=user_id,
+        )
+        db.commit()
+    return serialized
 
 
 def remove_item(db: Session, user_id: uuid.UUID, product_id: uuid.UUID) -> None:

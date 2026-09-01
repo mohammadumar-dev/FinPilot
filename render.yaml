@@ -1,0 +1,105 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploy: push this repo to GitHub, then in the Render dashboard choose
+# "New +" -> "Blueprint" and point it at the repo. Render reads this file
+# and provisions everything below in one pass.
+#
+# Service URLs below assume the default onrender.com subdomain
+# (https://<name>.onrender.com) with no name collision and no custom
+# domain — if you rename a service or attach a custom domain, update the
+# CORS_ORIGINS / NEXT_PUBLIC_API_BASE_URL values to match, in the Render
+# dashboard (Environment tab) rather than re-editing this file, since
+# Blueprint changes only apply on the next sync.
+#
+# Field names here are current as of Render's Blueprint spec at the time
+# of writing — Render does evolve this format, so if a `render blueprint
+# launch` (or the dashboard) rejects a key, check
+# https://render.com/docs/blueprint-spec for the current name before
+# assuming the intent is wrong.
+
+databases:
+  - name: finpilot-db
+    databaseName: finpilot
+    plan: free
+
+services:
+  # --- FastAPI backend: auth, catalog, orders, the buyer-agent chat loop,
+  # Razorpay test-mode payments + webhook, campaigns/ads/insights. ---
+  - type: web
+    name: finpilot-backend
+    runtime: docker
+    dockerfilePath: ./apps/finpilot-backend/Dockerfile
+    dockerContext: ./apps/finpilot-backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finpilot-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://finpilot-web.onrender.com
+      - key: ENVIRONMENT
+        value: production
+      # Set these in the Render dashboard after the first deploy (Blueprint
+      # env vars aren't a place to commit real secrets) — "sync: false"
+      # means Render prompts for a value instead of requiring one here.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      # From the Razorpay Dashboard once the webhook below is registered —
+      # see "Razorpay webhook" in the README's deployment section. Blank
+      # (the .env.example default) is a valid, if unverified, dev fallback;
+      # never leave it blank once this is a public URL.
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+
+  # --- Agent Checkout MCP server: the standard-protocol front door for
+  # external AI buyer agents, separate from the chat UI. Same image as
+  # finpilot-backend, only the start command differs. Optional — remove
+  # this service if you don't need external-agent access yet; nothing
+  # else in this file depends on it. ---
+  - type: web
+    name: finpilot-mcp
+    runtime: docker
+    dockerfilePath: ./apps/finpilot-backend/Dockerfile
+    dockerContext: ./apps/finpilot-backend
+    dockerCommand: python -m app.mcp_server.run
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finpilot-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        fromService:
+          type: web
+          name: finpilot-backend
+          envVarKey: JWT_SECRET_KEY
+      - key: ENVIRONMENT
+        value: production
+
+  # --- Next.js buyer app + merchant portal. ---
+  - type: web
+    name: finpilot-web
+    runtime: docker
+    dockerfilePath: ./apps/finpilot-web/Dockerfile
+    dockerContext: ./apps/finpilot-web
+    plan: free
+    envVars:
+      # Baked into the client bundle at build time (see the Dockerfile) —
+      # Render passes a docker-runtime service's envVars through as build
+      # args automatically, so this reaches `next build` correctly.
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: https://finpilot-backend.onrender.com

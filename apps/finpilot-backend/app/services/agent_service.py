@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models.conversation import Conversation, Message
 from app.models.merchant import Merchant
+from app.models.product import Product
 from app.services import catalog_service, llm_gateway
 from app.services.audit_service import log_audit
 from app.services.order_service import OrderError, check_payment_status, create_order_for_chat, list_orders_for_user
@@ -25,6 +26,10 @@ logger = logging.getLogger(__name__)
 # request; each iteration is one LLM call, so the cap still bounds cost/time.
 MAX_TOOL_ITERATIONS = 12
 MAX_SEARCH_LIMIT = 20
+# A model that returns 200 with neither content nor tool calls has quit
+# mid-task. Retrying on a different model recovers the turn; the cap keeps a
+# persistently broken model from burning the whole iteration budget.
+MAX_EMPTY_REPLY_RETRIES = 2
 
 SYSTEM_PROMPT = """You are the FinPilot shopping assistant. You have access to a single marketplace catalog spanning every merchant on the platform (footwear, apparel, computer accessories, mobiles/laptops, groceries, books, and more) — the buyer can shop across all of them in this one conversation, the same way they'd shop different stores in one Amazon-style marketplace.
 
@@ -44,6 +49,7 @@ Handling how many results to show — be precise, not padded:
 - If the buyer states a size or weight (e.g. "1kg rice", "half kg dal"), match it against the search result whose variant_label equals that size — variant_group groups the different sizes of the same item. If the exact size isn't available, say what sizes are, instead of guessing or substituting silently.
 
 - After create_order succeeds, tell the buyer the order id and that you'll check payment status; call check_payment_status if asked or after creating the order.
+- If create_order's result includes related_products, you may mention up to 3 of them as an optional add-on suggestion (e.g. "Want to add a case for that too?") — but never call create_order for one of them without the buyer separately and explicitly confirming that specific item, exactly like any other purchase. Never add one silently.
 - If the buyer asks to see their orders, order history, or "what have I bought", call list_orders — never guess or claim you can't do it.
 - If create_order fails with duplicate_order or already_purchased, the tool result includes the existing order_id and razorpay_payment_link — use them directly instead of asking the buyer for an order id they never had and don't know. Never ask the buyer to supply an order_id you already have or could get via list_orders.
 - create_order, check_payment_status, and list_orders all return razorpay_payment_link for any order that's still created/pending. If the buyer asks for the payment link, to "checkout", to "drop the link", or how to pay, and you don't already have it in this conversation, call check_payment_status (or list_orders if you don't have the order_id either) to get it, then share the exact URL. Never say you don't have a payment link without first calling one of those tools — you very likely do.
@@ -187,6 +193,77 @@ _AFFIRMATIVE_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+# Did the agent's previous message actually ask the buyer to commit? Matching
+# on the question is what lets a bare selection count as an answer to it.
+_PURCHASE_QUESTION_RE = re.compile(
+    r"""(
+          which\s+(one|ones|of\s+(these|those)|shoes|item|items|would|should)
+        | (would|want|shall|should)\s+(you|i|me)\b[^?]{0,80}?\b(order|buy|purchase|get|place)
+        | (want|like)\s+me\s+to\s+(order|buy|purchase|place)
+        | (can|could)\s+you\s+confirm
+        | confirm\s+(the|your|this|that|it|full)
+        | shall\s+i\s+(order|buy|place|go\s+ahead)
+        | ready\s+to\s+order
+    )""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Anything that reads as backing out. Checked first, so "no, not the shoes"
+# can never be mistaken for agreement.
+_NEGATION_RE = re.compile(
+    r"\b(no|nope|nah|not|don'?t|do\s+not|cancel|stop|wait|hold\s+on|never\s*mind|nevermind|remove)\b",
+    re.IGNORECASE,
+)
+
+# A short reply that is itself a question ("what's the warranty?") is the buyer
+# asking for more, not agreeing to buy.
+_QUESTION_LEAD_RE = re.compile(
+    r"^\s*(what|why|how|when|where|who|can|could|do|does|did|is|are|any|tell|show)\b|\?\s*$",
+    re.IGNORECASE,
+)
+
+# Selections answering a purchase question are short ("all", "mens one", "the
+# second", "both"). A long message is a fresh request, not an answer.
+_MAX_SELECTION_WORDS = 6
+
+
+def _last_agent_message(db: Session, conversation_id: uuid.UUID) -> str:
+    """The agent's most recent spoken message, skipping tool-call-only turns."""
+    rows = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation_id, Message.role == "agent")
+        .order_by(Message.seq.desc())
+        .limit(5)
+        .all()
+    )
+    for row in rows:
+        if row.content and row.content.strip():
+            return row.content
+    return ""
+
+
+def _buyer_confirmed(db: Session, conversation_id: uuid.UUID, user_message: str) -> bool:
+    """Whether this message authorises a purchase.
+
+    Keyword matching alone read each message in isolation, so it rejected the
+    two most natural ways to say yes: answering "Which of these would you like
+    to purchase?" with "all", and answering "Which shoes should I include, and
+    can you confirm?" with "mens one". Both were blocked as
+    confirmation_required, the model retried against a gate that would never
+    open, and the turn burned the whole model chain before failing.
+
+    A selection only counts when the agent actually asked for one, so this
+    widens what can be confirmed without widening when.
+    """
+    text = (user_message or "").strip()
+    if not text or _NEGATION_RE.search(text):
+        return False
+    if _AFFIRMATIVE_RE.search(text):
+        return True
+    if _QUESTION_LEAD_RE.search(text) or len(text.split()) > _MAX_SELECTION_WORDS:
+        return False
+    return bool(_PURCHASE_QUESTION_RE.search(_last_agent_message(db, conversation_id)))
+
 
 # What the model actually needs to remember about a product it showed
 # earlier: enough to name it, price it, and order it. Everything else in a
@@ -289,7 +366,7 @@ def _product_was_shown(db: Session, conversation_id: uuid.UUID, product_id: str)
     )
     for row in rows:
         tc = row.tool_call or {}
-        if tc.get("name") not in ("search_catalog", "get_product_detail"):
+        if tc.get("name") not in ("search_catalog", "get_product_detail", "create_order"):
             continue
         result = tc.get("result")
         if result is None:
@@ -301,6 +378,11 @@ def _product_was_shown(db: Session, conversation_id: uuid.UUID, product_id: str)
         elif isinstance(result, dict) and result.get("product_id") == product_id:
             # get_product_detail result shape: {"product_id": ..., ...}
             return True
+        elif isinstance(result, dict) and isinstance(result.get("related_products"), list):
+            # create_order's upsell suggestions — a buyer confirming one of
+            # these afterward counts as having been "shown" it too.
+            if any(item.get("product_id") == product_id for item in result["related_products"] if isinstance(item, dict)):
+                return True
     return False
 
 
@@ -310,7 +392,7 @@ def _execute_tool(
     user_id: uuid.UUID,
     name: str,
     arguments: dict,
-    latest_user_text: str,
+    buyer_confirmed: bool,
 ) -> dict:
     if name == "search_catalog":
         max_price = arguments.get("max_price")
@@ -353,7 +435,7 @@ def _execute_tool(
         product_id = arguments.get("product_id", "")
         quantity = int(arguments.get("quantity") or 1)
 
-        if not _AFFIRMATIVE_RE.search(latest_user_text) or not _product_was_shown(db, conversation.id, product_id):
+        if not buyer_confirmed or not _product_was_shown(db, conversation.id, product_id):
             log_audit(
                 db,
                 action="create_order",
@@ -378,6 +460,35 @@ def _execute_tool(
                 conversation_id=conversation.id,
             )
             return {"error": e.code, "message": e.message, **e.data}
+        except Exception:
+            # Anything the payment provider raises that isn't an OrderError —
+            # an outage, a 5xx, or Razorpay's "test mode limit of 30 reached
+            # for payment_link" — used to escape this tool call and 500 the
+            # whole chat request, losing the turn and every result already on
+            # screen. The agent should hear about it as a tool error and tell
+            # the buyer, exactly as it would for any other failed order.
+            db.rollback()
+            logger.exception(
+                "create_order failed unexpectedly for product %s in conversation %s",
+                product_id,
+                conversation.id,
+            )
+            log_audit(
+                db,
+                action="create_order",
+                outcome="failed",
+                reasoning="Payment provider or database error while creating the order",
+                payload={"arguments": arguments, "error": "order_failed"},
+                user_id=user_id,
+                conversation_id=conversation.id,
+            )
+            return {
+                "error": "order_failed",
+                "message": (
+                    "Couldn't place this order right now — the payment provider rejected the "
+                    "request. Tell the buyer plainly and suggest trying again shortly."
+                ),
+            }
 
         merchant = db.get(Merchant, order.merchant_id)
         result = {
@@ -400,6 +511,30 @@ def _execute_tool(
             conversation_id=conversation.id,
             amount_paise=order.amount_paise,
         )
+
+        # Cross-sell: same-category, same-merchant products the buyer hasn't
+        # bought yet. Purely informational — the agent may mention these, but
+        # create_order still requires its own separate confirmation for any
+        # of them, so nothing here can turn into a purchase on its own.
+        ordered_product = db.get(Product, order.product_id)
+        if ordered_product is not None:
+            related = catalog_service.get_related_products(db, ordered_product, limit=3)
+            if related:
+                result["related_products"] = related
+                log_audit(
+                    db,
+                    action="upsell_suggested",
+                    outcome="success",
+                    reasoning="Suggested same-category products after a confirmed purchase",
+                    payload={
+                        "order_id": str(order.id),
+                        "base_product_id": str(ordered_product.id),
+                        "suggested_product_ids": [r["product_id"] for r in related],
+                    },
+                    user_id=user_id,
+                    conversation_id=conversation.id,
+                )
+
         return result
 
     if name == "check_payment_status":
@@ -451,7 +586,11 @@ def _execute_tool(
     return {"error": "unknown_tool", "message": f"No such tool: {name}"}
 
 
-def _summarize_orders(placed: list[dict], existing: list[dict]) -> str:
+def _summarize_turn(
+    products_found: list[str],
+    placed: list[dict],
+    existing: list[dict],
+) -> str:
     """A factual, non-empty reply built from what this turn actually did.
 
     Used when the model hands back nothing usable — either an empty completion
@@ -471,10 +610,20 @@ def _summarize_orders(placed: list[dict], existing: list[dict]) -> str:
             f"{len(existing)} {'was' if len(existing) == 1 else 'were'} already ordered earlier"
         )
 
-    if not parts:
-        return "Sorry, I'm having trouble completing that right now — could you rephrase or try again?"
+    if parts:
+        return " · ".join(parts) + ". You can pay for them from Orders."
 
-    return " · ".join(parts) + ". You can pay for them from Orders."
+    # No orders, but products are already on screen as cards — pointing at
+    # them beats apologising over a screen full of results.
+    if products_found:
+        if len(products_found) == 1:
+            return f"Here's what I found — **{products_found[0]}**. Want me to order it?"
+        return (
+            f"Here are the {len(products_found)} matches I found. "
+            "Tell me which ones you'd like and I'll order them."
+        )
+
+    return "Sorry, I'm having trouble completing that right now — could you rephrase or try again?"
 
 
 def run_agent_turn(
@@ -483,6 +632,11 @@ def run_agent_turn(
     user_id: uuid.UUID,
     user_message: str,
 ) -> str:
+    # Resolved before the user row is written and before the loop appends any
+    # agent messages, so _last_agent_message sees the question the buyer is
+    # actually replying to rather than something from this same turn.
+    buyer_confirmed = _buyer_confirmed(db, conversation.id, user_message)
+
     db.add(Message(conversation_id=conversation.id, role="user", content=user_message))
     db.flush()
 
@@ -494,6 +648,8 @@ def run_agent_turn(
     # attempt at the items that already succeeded.
     orders_placed: list[dict] = []
     orders_existing: list[dict] = []
+    products_found: list[str] = []
+    empty_replies = 0
 
     for _ in range(MAX_TOOL_ITERATIONS):
         try:
@@ -509,21 +665,50 @@ def run_agent_turn(
             logger.exception("All Groq models in the fallback chain failed for conversation %s", conversation.id)
             break
         logger.info("agent turn served by model=%s", model_used)
-        choice = response.choices[0].message
+
+        # A 200 carrying no choices is a provider returning an error payload
+        # shaped like a completion — observed from OpenRouter. Indexing it
+        # straight away raised TypeError and killed the turn, so treat it as
+        # this model failing and let another one take over.
+        choices = getattr(response, "choices", None)
+        if not choices:
+            empty_replies += 1
+            logger.warning(
+                "no choices in response from model=%s for conversation %s (attempt %d/%d)",
+                model_used,
+                conversation.id,
+                empty_replies,
+                MAX_EMPTY_REPLY_RETRIES,
+            )
+            if empty_replies <= MAX_EMPTY_REPLY_RETRIES:
+                llm_gateway.penalize_model(model_used)
+                continue
+            break
+
+        choice = choices[0].message
 
         if not choice.tool_calls:
             reply = (choice.content or "").strip()
             if not reply:
-                # An empty completion with no tool calls is the model giving up
-                # silently. Storing it verbatim showed the buyer a blank bubble
-                # — worse than saying nothing, because their orders had in fact
-                # just gone through.
+                # An empty completion with no tool calls is the model quitting
+                # mid-task: it returns 200, so no error path fires, and the
+                # turn silently ends. Seen in practice as two of three searches
+                # done and nothing said. Bench that model and let a different
+                # one pick the work up — retrying is what finishes the list.
+                empty_replies += 1
                 logger.warning(
-                    "empty completion with no tool calls for conversation %s; "
-                    "summarising the turn instead",
+                    "empty completion from model=%s for conversation %s (attempt %d/%d)",
+                    model_used,
                     conversation.id,
+                    empty_replies,
+                    MAX_EMPTY_REPLY_RETRIES,
                 )
-                reply = _summarize_orders(orders_placed, orders_existing)
+                if empty_replies <= MAX_EMPTY_REPLY_RETRIES:
+                    llm_gateway.penalize_model(model_used)
+                    continue
+                # Out of retries: say what the turn actually achieved rather
+                # than apologising over a screen full of results.
+                reply = _summarize_turn(products_found, orders_placed, orders_existing)
             db.add(Message(conversation_id=conversation.id, role="agent", content=reply))
             db.commit()
             return reply
@@ -542,8 +727,18 @@ def run_agent_turn(
         )
         db.flush()
 
-        messages.append(
-            {
+        # Replay the provider's own message object rather than a hand-rebuilt
+        # dict. Rebuilding kept only id/name/arguments and silently dropped
+        # any provider-specific fields travelling with the call — which is how
+        # Gemini 3.x turns rejected their own tool calls on the very next
+        # request ("Function call is missing a thought_signature"). If a
+        # different provider serves the next call and objects to a field it
+        # doesn't know, that surfaces as a retryable 400 and the chain moves
+        # on, so preserving them is the safer default either way.
+        try:
+            assistant_message = choice.model_dump(exclude_none=True)
+        except AttributeError:  # a plain dict/stub, e.g. under test
+            assistant_message = {
                 "role": "assistant",
                 "content": choice.content,
                 "tool_calls": [
@@ -555,15 +750,21 @@ def run_agent_turn(
                     for tc in requested
                 ],
             }
-        )
+        assistant_message.setdefault("role", "assistant")
+        messages.append(assistant_message)
 
         for tc in requested:
-            result = _execute_tool(db, conversation, user_id, tc["name"], tc["arguments"], user_message)
+            result = _execute_tool(db, conversation, user_id, tc["name"], tc["arguments"], buyer_confirmed)
             if tc["name"] == "create_order" and result.get("order_id"):
                 if result.get("error"):
                     orders_existing.append(result)  # duplicate_order / already_purchased
                 else:
                     orders_placed.append(result)
+            elif tc["name"] == "search_catalog":
+                for item in result.get("results", []):
+                    name = item.get("name")
+                    if name and name not in products_found:
+                        products_found.append(name)
             result_json = json.dumps(result)
             db.add(
                 Message(
@@ -578,7 +779,7 @@ def run_agent_turn(
 
         db.commit()
 
-    fallback = _summarize_orders(orders_placed, orders_existing)
+    fallback = _summarize_turn(products_found, orders_placed, orders_existing)
     if orders_placed or orders_existing:
         fallback += " I couldn't get through the rest just now — say \"continue\" and I'll pick up from there."
     db.add(Message(conversation_id=conversation.id, role="agent", content=fallback))

@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/sidebar";
 import { EllipsisVerticalIcon, LogOutIcon } from "lucide-react";
 
-export function NavUser() {
+export function NavUser({ logoutRedirectTo = "/login" }: { logoutRedirectTo?: string }) {
   const { isMobile } = useSidebar();
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -35,7 +35,7 @@ export function NavUser() {
 
   function handleLogout() {
     logout();
-    router.replace("/login");
+    router.replace(logoutRedirectTo);
   }
 
   return (

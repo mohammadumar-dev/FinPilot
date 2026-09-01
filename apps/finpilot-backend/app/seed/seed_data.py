@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password, pwd_context
 from app.models import Merchant, Product, AgentClient, User
 from app.db.session import SessionLocal
+from app.seed.growth_data import seed_campaigns_and_ads
 from app.seed.images import load_product_image
 
 DEMO_PASSWORD = "Demo@1234"
@@ -47,21 +48,21 @@ def _slugify(name: str) -> str:
 
 
 MERCHANTS = [
-    {"key": "stepforward", "name": "StepForward Footwear"},
-    {"key": "threadline", "name": "Threadline Apparel"},
-    {"key": "circuithub", "name": "CircuitHub Computer Accessories"},
-    {"key": "novatech", "name": "NovaTech Mobiles & Laptops"},
-    {"key": "pageturner", "name": "PageTurner Books"},
-    {"key": "greenbasket", "name": "GreenBasket Grocery"},
-    {"key": "homenest", "name": "HomeNest Furnishings"},
-    {"key": "glowup", "name": "GlowUp Beauty"},
-    {"key": "sprintzone", "name": "SprintZone Sports"},
-    {"key": "tinytots", "name": "TinyTots Toys"},
-    {"key": "pawpals", "name": "PawPals Pet Supplies"},
-    {"key": "kitchencraft", "name": "KitchenCraft Essentials"},
-    {"key": "autogear", "name": "AutoGear Motors"},
-    {"key": "aromahome", "name": "AromaHome Fragrances"},
-    {"key": "urbanstyle", "name": "UrbanStyle Accessories"},
+    {"key": "stepforward", "name": "StepForward Footwear", "sku_prefix": "SF"},
+    {"key": "threadline", "name": "Threadline Apparel", "sku_prefix": "TL"},
+    {"key": "circuithub", "name": "CircuitHub Computer Accessories", "sku_prefix": "CH"},
+    {"key": "novatech", "name": "NovaTech Mobiles & Laptops", "sku_prefix": "NT"},
+    {"key": "pageturner", "name": "PageTurner Books", "sku_prefix": "PT"},
+    {"key": "greenbasket", "name": "GreenBasket Grocery", "sku_prefix": "GB"},
+    {"key": "homenest", "name": "HomeNest Furnishings", "sku_prefix": "HN"},
+    {"key": "glowup", "name": "GlowUp Beauty", "sku_prefix": "GU"},
+    {"key": "sprintzone", "name": "SprintZone Sports", "sku_prefix": "SZ"},
+    {"key": "tinytots", "name": "TinyTots Toys", "sku_prefix": "TT"},
+    {"key": "pawpals", "name": "PawPals Pet Supplies", "sku_prefix": "PP"},
+    {"key": "kitchencraft", "name": "KitchenCraft Essentials", "sku_prefix": "KC"},
+    {"key": "autogear", "name": "AutoGear Motors", "sku_prefix": "AG"},
+    {"key": "aromahome", "name": "AromaHome Fragrances", "sku_prefix": "AH"},
+    {"key": "urbanstyle", "name": "UrbanStyle Accessories", "sku_prefix": "US"},
 ]
 for _m in MERCHANTS:
     _m["slug"] = _slugify(_m["name"])
@@ -1672,6 +1673,10 @@ def reset(db: Session) -> None:
     structure and there's no reason to lose a real user's chats over a data
     reshuffle."""
     print("[reset] wiping catalog data (orders, audit log, agent_clients, products, merchant admins, merchants)...")
+    db.execute(text("DELETE FROM ad_campaigns"))
+    db.execute(text("DELETE FROM ad_wallet_topups"))
+    db.execute(text("DELETE FROM ad_wallets"))
+    db.execute(text("DELETE FROM campaigns"))
     db.execute(text("DELETE FROM audit_log"))
     db.execute(text("DELETE FROM orders"))
     db.execute(text("DELETE FROM agent_clients"))
@@ -1701,10 +1706,13 @@ def seed(db: Session) -> None:
     for m in MERCHANTS:
         existing = db.query(Merchant).filter(Merchant.name == m["name"]).one_or_none()
         if existing:
+            if not existing.sku_prefix:
+                existing.sku_prefix = m["sku_prefix"]
+                db.add(existing)
             merchants_by_key[m["key"]] = existing
             print(f"[skip] merchant already exists: {m['name']}")
         else:
-            merchant = Merchant(name=m["name"], slug=m["slug"])
+            merchant = Merchant(name=m["name"], slug=m["slug"], sku_prefix=m["sku_prefix"])
             db.add(merchant)
             db.flush()
             merchants_by_key[m["key"]] = merchant
@@ -1792,6 +1800,7 @@ def main() -> None:
         if "--reset" in sys.argv:
             reset(db)
         seed(db)
+        seed_campaigns_and_ads(db)
         print("\nSeed complete.")
     finally:
         db.close()

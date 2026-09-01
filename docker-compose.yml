@@ -1,0 +1,77 @@
+# Local full-stack run via Docker — for testing the containers themselves
+# before deploying (see render.yaml for the actual Render deployment).
+# Day-to-day local dev is still the plain `npm run dev` / `uvicorn --reload`
+# flow in each app's own README; this is the "does the image actually work"
+# check.
+#
+# Requires apps/finpilot-backend/.env to exist first (see its .env.example)
+# — DATABASE_URL/CORS_ORIGINS in it are overridden below for the compose
+# network, everything else (JWT secret, LLM/Razorpay keys) comes from it.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: finpilot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - finpilot_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./apps/finpilot-backend
+    env_file:
+      - ./apps/finpilot-backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/finpilot
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # The Agent Checkout MCP server — same image as backend, different
+  # command. Optional: comment this out if you're not testing the
+  # external-agent path locally.
+  mcp-server:
+    build:
+      context: ./apps/finpilot-backend
+    command: python -m app.mcp_server.run
+    env_file:
+      - ./apps/finpilot-backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/finpilot
+      PORT: "8100"
+    ports:
+      - "8100:8100"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./apps/finpilot-web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  finpilot_pgdata:

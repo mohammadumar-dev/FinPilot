@@ -20,9 +20,11 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
-    if (!loading && user) {
-      router.replace("/dashboard");
-    }
+    if (loading || !user) return;
+    // A merchant admin has no business in the buyer app — send them to their
+    // own portal instead of erroring, same courtesy the merchant login page
+    // extends a buyer logging in there.
+    router.replace(user.role === "merchant_admin" ? "/merchant" : "/dashboard");
   }, [loading, user, router]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -31,7 +33,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-      router.replace("/dashboard");
+      // Redirect itself happens in the effect above once `user` resolves.
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError("That email and password don't match an account.");

@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+*.md
+scripts/
+# Seed source images: large binaries, gitignored, ingested into the DB by
+# app/seed/images.py at seed time — never meant to ship in the image itself.
+# A missing file just leaves that product imageless (see images.py); the
+# merchant portal's own image-upload feature covers a deployed instance.
+public/product-images/

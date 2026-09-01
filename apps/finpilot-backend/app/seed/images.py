@@ -1,20 +1,21 @@
 """Product image ingestion for the seed script.
 
 Looks up a source image by SKU in public/product-images/ (any of
-.jpg/.jpeg/.png/.webp, case-insensitive), converts it to WebP to keep DB
-storage small, and returns raw bytes ready to store in
-Product.image_data. A missing file is not an error — the seed script just
-leaves that product's image columns null and the UI falls back to a
-placeholder.
+.jpg/.jpeg/.png/.webp, case-insensitive) and converts it via
+app.services.image_service (the same WebP conversion the merchant
+product-image upload endpoint uses) into bytes ready to store in
+Product.image_data. A missing/bad file is not an error here — the seed
+script just leaves that product's image columns null and the UI falls back
+to a placeholder (unlike the upload endpoint, which owes a live merchant a
+real rejection instead of a silent no-op).
 """
 
 from pathlib import Path
 
-from PIL import Image
+from app.services.image_service import ImageConversionError, convert_to_webp
 
 IMAGES_DIR = Path(__file__).resolve().parent.parent.parent / "public" / "product-images"
 _SOURCE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
-WEBP_MIME_TYPE = "image/webp"
 
 
 def _find_source(sku: str) -> Path | None:
@@ -40,13 +41,7 @@ def load_product_image(sku: str) -> tuple[bytes | None, str | None]:
         return None, None
 
     try:
-        with Image.open(source) as img:
-            img = img.convert("RGB") if img.mode not in ("RGB", "RGBA") else img
-            from io import BytesIO
-
-            buf = BytesIO()
-            img.save(buf, format="WEBP", quality=80, method=6)
-            return buf.getvalue(), WEBP_MIME_TYPE
-    except Exception as e:  # noqa: BLE001 — a bad/corrupt image file must never abort the whole seed run
+        return convert_to_webp(source.read_bytes())
+    except ImageConversionError as e:
         print(f"[warn] failed to process image for {sku} ({source.name}): {e}")
         return None, None

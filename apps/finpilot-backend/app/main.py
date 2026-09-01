@@ -3,7 +3,23 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import agent_clients, audit, auth, cart, catalog, chat, conversations, orders, webhooks
+from app.api.routes import (
+    ads,
+    agent_clients,
+    audit,
+    auth,
+    campaigns,
+    cart,
+    catalog,
+    chat,
+    conversations,
+    merchant_audit,
+    merchant_insights,
+    merchant_orders,
+    merchant_products,
+    orders,
+    webhooks,
+)
 from app.core.config import settings
 
 # Uvicorn only configures its own "uvicorn.*" loggers by default — app-level
@@ -29,6 +45,13 @@ app.include_router(chat.router)
 app.include_router(conversations.router)
 app.include_router(audit.router)
 app.include_router(agent_clients.router)
+app.include_router(campaigns.router)
+app.include_router(merchant_products.router)
+app.include_router(merchant_orders.router)
+app.include_router(merchant_audit.router)
+app.include_router(merchant_insights.router)
+app.include_router(ads.merchant_router)
+app.include_router(ads.click_router)
 app.include_router(webhooks.router)
 
 

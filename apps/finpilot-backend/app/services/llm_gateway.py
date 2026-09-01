@@ -1,14 +1,24 @@
-"""Multi-model Groq gateway with automatic "Auto Model" fallback.
+"""Multi-provider LLM gateway with automatic fallback.
 
-Each Groq model has its own separate RPM/RPD/TPM/TPD quota bucket — a model
-that's exhausted doesn't mean the account is, it means try the next model's
-bucket. This module tracks local usage against each model's published limits
-(proactive — skip a model we already know is full) and also reacts to the
-API's own 429/413/5xx responses (authoritative — the API always wins over
-our local estimate), falling through the chain until one call succeeds.
+Groq, NVIDIA NIM and OpenRouter all speak the OpenAI chat-completions API, so
+one client talks to all three and they differ only in base URL, key and model
+ids. Configure any combination: whichever keys are present form the chain, and
+the app only fails when none are. Losing a provider — an outage, an expired
+key, an exhausted quota — costs capacity, never availability.
+
+Every (provider, model) pair is its own quota bucket. A model that's exhausted
+doesn't mean the account is, let alone the provider, so this tracks local usage
+against each bucket's published limits (proactive: skip one we already know is
+full) and also reacts to the API's own 429/413/5xx responses (authoritative:
+the API always wins over our local estimate), walking the chain until a call
+succeeds.
+
+Where a provider publishes no usable per-model limits, its buckets carry no
+local caps and rely entirely on the reactive path. That is deliberate — better
+to let the API tell us than to invent numbers.
 
 Only general-purpose, tool-calling-capable chat models belong in the chain.
-Deliberately excluded:
+Deliberately excluded from Groq's catalogue:
   - whisper-large-v3(-turbo): audio transcription, not chat
   - meta-llama/llama-prompt-guard-2-*: prompt-injection classifiers, not chat
   - openai/gpt-oss-safeguard-20b: a safety-classification variant, not a
@@ -25,32 +35,152 @@ import re
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from groq import APIConnectionError, APIStatusError, Groq, RateLimitError
+from openai import APIConnectionError, APIStatusError, OpenAI, RateLimitError
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Provider:
+    name: str
+    base_url: str
+    api_key: str
+    default_headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class ModelLimits:
+    """One quota bucket: a model as served by a specific provider.
+
+    rpm/rpd/tpm/tpd may be None when the provider publishes nothing reliable —
+    the bucket is then governed purely by the API's own rejections.
+    """
+
+    provider: str
     name: str
-    rpm: int
-    rpd: int
+    rpm: int | None = None
+    rpd: int | None = None
     tpm: int | None = None
     tpd: int | None = None
 
+    @property
+    def key(self) -> str:
+        return f"{self.provider}:{self.name}"
 
-# Priority order: most capable first. A model is only skipped in favor of the
-# next when it's locally estimated full or the API itself rejects the call.
-MODEL_CHAIN: list[ModelLimits] = [
-    ModelLimits("openai/gpt-oss-120b", rpm=30, rpd=1000, tpm=8000, tpd=200_000),
-    ModelLimits("openai/gpt-oss-20b", rpm=30, rpd=1000, tpm=8000, tpd=200_000),
-    ModelLimits("qwen/qwen3.8-27b", rpm=30, rpd=1000, tpm=8000, tpd=2_000_000_000),
-    ModelLimits("qwen/qwen3.6-27b", rpm=30, rpd=1000, tpm=8000, tpd=200_000),
-]
 
-logger = logging.getLogger(__name__)
+# Groq's documented free-tier limits, the only ones here measured rather than
+# assumed. Applied to every Groq model since they share a shape.
+_GROQ_LIMITS = {"rpm": 30, "rpd": 1000, "tpm": 8000, "tpd": 200_000}
+
+
+def _split(csv: str) -> list[str]:
+    return [item.strip() for item in csv.split(",") if item.strip()]
+
+
+def _build_providers() -> dict[str, Provider]:
+    """Only providers with a key configured. Nothing else is required."""
+    providers: dict[str, Provider] = {}
+    if settings.GROQ_API_KEY:
+        providers["groq"] = Provider(
+            name="groq",
+            base_url="https://api.groq.com/openai/v1",
+            api_key=settings.GROQ_API_KEY,
+        )
+    if settings.NVIDIA_API_KEY:
+        providers["nvidia"] = Provider(
+            name="nvidia",
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key=settings.NVIDIA_API_KEY,
+        )
+    if settings.OPENROUTER_API_KEY:
+        providers["openrouter"] = Provider(
+            name="openrouter",
+            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.OPENROUTER_API_KEY,
+            default_headers={
+                "HTTP-Referer": settings.OPENROUTER_APP_URL,
+                "X-Title": settings.OPENROUTER_APP_TITLE,
+            },
+        )
+    if settings.GEMINI_API_KEY:
+        # Gemini's native API has its own request shape, but Google publishes
+        # an OpenAI-compatible surface at this path — so it joins the chain on
+        # the same terms as the rest, with no special-casing anywhere else.
+        providers["gemini"] = Provider(
+            name="gemini",
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=settings.GEMINI_API_KEY,
+        )
+    return providers
+
+
+def _build_chain(providers: dict[str, Provider]) -> list[ModelLimits]:
+    """Interleave providers so the chain alternates rather than draining one.
+
+    Round-robin by rank matters: falling through a provider's whole catalogue
+    first means every retry after the first stall lands on that same provider's
+    smaller, less reliable models. Alternating reaches a second provider's
+    flagship before dropping to anyone's fallback tier.
+    """
+    per_provider: list[list[ModelLimits]] = []
+    if "groq" in providers:
+        per_provider.append(
+            [ModelLimits("groq", m, **_GROQ_LIMITS) for m in _split(settings.GROQ_MODELS)]
+        )
+    if "nvidia" in providers:
+        per_provider.append(
+            [ModelLimits("nvidia", m) for m in _split(settings.NVIDIA_MODELS)]
+        )
+    if "openrouter" in providers:
+        per_provider.append(
+            [ModelLimits("openrouter", m) for m in _split(settings.OPENROUTER_MODELS)]
+        )
+    if "gemini" in providers:
+        per_provider.append(
+            [ModelLimits("gemini", m) for m in _split(settings.GEMINI_MODELS)]
+        )
+
+    chain: list[ModelLimits] = []
+    for rank in range(max((len(models) for models in per_provider), default=0)):
+        for models in per_provider:
+            if rank < len(models):
+                chain.append(models[rank])
+    return chain
+
+
+PROVIDERS: dict[str, Provider] = _build_providers()
+MODEL_CHAIN: list[ModelLimits] = _build_chain(PROVIDERS)
+
+_chain_logged = False
+
+
+def _log_chain_once() -> None:
+    """Announce the active chain on first use.
+
+    Deliberately not at import time: this module is imported before uvicorn
+    installs its logging handlers, so a module-level log line is swallowed and
+    the one thing an operator needs to see — which providers are actually live
+    — never reaches the log.
+    """
+    global _chain_logged
+    if _chain_logged:
+        return
+    _chain_logged = True
+    if MODEL_CHAIN:
+        logger.info(
+            "LLM providers configured: %s | chain: %s",
+            ", ".join(sorted(PROVIDERS)),
+            " -> ".join(m.key for m in MODEL_CHAIN),
+        )
+    else:
+        logger.warning(
+            "No LLM provider configured — set GROQ_API_KEY, NVIDIA_API_KEY, "
+            "OPENROUTER_API_KEY or GEMINI_API_KEY. Chat will fail until one is present."
+        )
 
 _RETRYABLE_STATUS = {408, 413, 429, 500, 502, 503, 504}
 _DEFAULT_COOLDOWN_SECONDS = 30.0
@@ -87,11 +217,26 @@ _MAX_CHAIN_WAIT_SECONDS = 12.0
 # instead of falling through to the next model.
 _RETRYABLE_BAD_REQUEST_CODES = {"output_parse_failed", "tool_use_failed"}
 
+# Same idea, reported as a status rather than a code. Gemini answers
+# INVALID_ARGUMENT when a replayed tool call lacks provider-specific state it
+# expects (thought_signature). Our request is well-formed for every other
+# provider, so this is a "this model can't take it" case: fall through rather
+# than abort a turn that may already have placed orders.
+_RETRYABLE_BAD_REQUEST_STATUSES = {"INVALID_ARGUMENT"}
+
 
 def _is_retryable_bad_request(exc: APIStatusError) -> bool:
-    body = exc.body if isinstance(exc.body, dict) else {}
+    body = exc.body
+    # Gemini returns a list of error objects where the others return a dict.
+    if isinstance(body, list):
+        body = body[0] if body and isinstance(body[0], dict) else {}
+    if not isinstance(body, dict):
+        return False
     error = body.get("error") if isinstance(body.get("error"), dict) else {}
-    return error.get("code") in _RETRYABLE_BAD_REQUEST_CODES
+    return (
+        error.get("code") in _RETRYABLE_BAD_REQUEST_CODES
+        or error.get("status") in _RETRYABLE_BAD_REQUEST_STATUSES
+    )
 
 
 class _ModelState:
@@ -126,9 +271,9 @@ class _ModelState:
             if now < self.cooldown_until:
                 return False
             self._prune(now)
-            if len(self._request_times_min) >= self.limits.rpm:
+            if self.limits.rpm is not None and len(self._request_times_min) >= self.limits.rpm:
                 return False
-            if len(self._request_times_day) >= self.limits.rpd:
+            if self.limits.rpd is not None and len(self._request_times_day) >= self.limits.rpd:
                 return False
             if self.limits.tpm is not None:
                 used = sum(t for _, t in self._token_events_min)
@@ -154,7 +299,7 @@ class _ModelState:
             self._prune(now)
             waits = [max(0.0, self.cooldown_until - now)]
 
-            if len(self._request_times_min) >= self.limits.rpm:
+            if self.limits.rpm is not None and len(self._request_times_min) >= self.limits.rpm:
                 waits.append(max(0.0, 60.0 - (now - self._request_times_min[0])))
             if self.limits.rpd is not None and len(self._request_times_day) >= self.limits.rpd:
                 return float("inf")  # daily request cap: not recoverable in-turn
@@ -195,20 +340,32 @@ class _ModelState:
             self.cooldown_until = max(self.cooldown_until, time.time() + seconds)
 
 
-_states: dict[str, _ModelState] = {m.name: _ModelState(m) for m in MODEL_CHAIN}
-_client: Groq | None = None
+_states: dict[str, _ModelState] = {m.key: _ModelState(m) for m in MODEL_CHAIN}
+_clients: dict[str, OpenAI] = {}
+_clients_lock = threading.Lock()
 
 
-def _get_client() -> Groq:
-    global _client
-    if _client is None:
-        # max_retries=0: the SDK's own default retry-on-429 blocks and
-        # retries the *same* model for several seconds before ever raising —
-        # directly fighting this gateway's job, which is to fail fast on a
-        # rate-limited model and move to the next one's separate quota
-        # bucket instead of waiting out the first one's cooldown.
-        _client = Groq(api_key=settings.GROQ_API_KEY, max_retries=0)
-    return _client
+def _get_client(provider_name: str) -> OpenAI:
+    """One client per provider, created on first use.
+
+    max_retries=0: the SDK's own retry-on-429 blocks and retries the *same*
+    model for several seconds before ever raising — directly fighting this
+    gateway's job, which is to fail fast on a rate-limited bucket and move to
+    the next one instead of waiting out the first one's cooldown.
+    """
+    with _clients_lock:
+        client = _clients.get(provider_name)
+        if client is None:
+            provider = PROVIDERS[provider_name]
+            client = OpenAI(
+                api_key=provider.api_key,
+                base_url=provider.base_url,
+                default_headers=provider.default_headers or None,
+                max_retries=0,
+                timeout=60.0,
+            )
+            _clients[provider_name] = client
+        return client
 
 
 def _estimate_tokens(messages: list[dict], tools: list[dict] | None = None) -> int:
@@ -258,16 +415,29 @@ def _seconds_until_any_model_free(estimated_tokens: int) -> float:
     )
 
 
+def penalize_model(model_key: str, seconds: float = 25.0) -> None:
+    """Bench a model that answered but produced nothing usable.
+
+    An empty completion with no tool calls is a model-quality failure, not a
+    quota one — the API returned 200, so none of the reactive 429/400 paths
+    fire and the same model would be picked again on the retry. Cooling it
+    down routes the next attempt to a different model's bucket, which is the
+    whole point of having a chain.
+    """
+    state = _states.get(model_key)
+    if state is not None:
+        state.cool_down(seconds)
+
+
 def _ordered_chain() -> list[ModelLimits]:
-    # The configured GROQ_MODEL (default openai/gpt-oss-120b) goes first if
-    # it's one of the known chat-capable models; the rest of the chain
-    # follows in its declared priority order.
-    preferred = settings.GROQ_MODEL
-    if preferred in _states:
-        return [m for m in MODEL_CHAIN if m.name == preferred] + [
-            m for m in MODEL_CHAIN if m.name != preferred
-        ]
-    return MODEL_CHAIN
+    # The preferred model may be served by more than one provider — every
+    # bucket for it is promoted, in chain order, so the preference survives
+    # whichever providers happen to be configured.
+    preferred = settings.preferred_model
+    front = [m for m in MODEL_CHAIN if m.name == preferred]
+    if not front:
+        return MODEL_CHAIN
+    return front + [m for m in MODEL_CHAIN if m.name != preferred]
 
 
 def chat_completion_with_fallback(
@@ -287,18 +457,23 @@ def chat_completion_with_fallback(
     Raises the last error (or RuntimeError if every model was skipped as
     locally full) if the whole chain fails — callers should catch this and
     degrade gracefully rather than let it become an unhandled 500."""
-    client = _get_client()
+    _log_chain_once()
+    if not MODEL_CHAIN:
+        raise RuntimeError(
+            "No LLM provider configured. Set at least one of GROQ_API_KEY, "
+            "NVIDIA_API_KEY, OPENROUTER_API_KEY or GEMINI_API_KEY."
+        )
     estimated_tokens = _estimate_tokens(messages, tools)
     last_error: Exception | None = None
     deadline = time.monotonic() + max_wait_seconds
 
     while True:
         for model in _ordered_chain():
-            state = _states[model.name]
+            state = _states[model.key]
             if not state.available(estimated_tokens):
                 continue
             try:
-                response = client.chat.completions.create(
+                response = _get_client(model.provider).chat.completions.create(
                     model=model.name,
                     messages=messages,
                     tools=tools,
@@ -322,7 +497,7 @@ def chat_completion_with_fallback(
 
             used_tokens = getattr(getattr(response, "usage", None), "total_tokens", None) or estimated_tokens
             state.record_usage(used_tokens)
-            return response, model.name
+            return response, model.key
 
         # Every model is unavailable. These buckets refill on a seconds-long
         # sliding window, so a short wait usually rescues a turn that would
@@ -345,4 +520,4 @@ def chat_completion_with_fallback(
 
     if last_error is not None:
         raise last_error
-    raise RuntimeError("All configured Groq models are currently rate-limited; try again shortly.")
+    raise RuntimeError("All configured models are currently rate-limited; try again shortly.")
