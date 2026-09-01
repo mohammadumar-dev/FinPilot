@@ -7,6 +7,7 @@ from app.models.agent_client import AgentClient
 from app.models.merchant import Merchant
 from app.models.order import Order
 from app.models.product import Product
+from app.services.campaign_service import get_effective_price
 from app.services.payment_service import create_razorpay_order, fetch_payment_state
 
 
@@ -85,13 +86,33 @@ def create_order_for_chat(
             },
         )
 
+    # Re-read stock server-side too — same distrust-the-caller rule as price
+    # below. Checked (and decremented further down) only for a genuinely new
+    # reservation; the duplicate/already-purchased branch above already
+    # returned before this point, so nothing here double-counts a retry.
+    if product.stock_quantity < quantity:
+        raise OrderError(
+            "out_of_stock",
+            f"Only {product.stock_quantity} left in stock" if product.stock_quantity > 0 else "Out of stock",
+            data={"available_quantity": product.stock_quantity},
+        )
+
     # Re-read the current price server-side — never trust anything the agent
     # (or a stale earlier turn in the conversation) claims about the price.
     # Total is unit price * quantity; quantity is buyer-stated (e.g. "two
-    # packets"), never trusted for price itself.
-    amount_paise = product.price_paise * quantity
+    # packets"), never trusted for price itself. get_effective_price folds in
+    # any merchant-approved campaign discount currently applied to this
+    # product — the catalog price itself is never overwritten.
+    unit_price_paise = get_effective_price(db, product)
+    amount_paise = unit_price_paise * quantity
     description = f"{product.name} — {merchant.name}" if merchant else product.name
     payment = create_razorpay_order(amount_paise, receipt=_new_reference_id(), description=description)
+
+    # Decrement once the order is actually being created/reactivated — not a
+    # true reservation-with-release-on-failure system (out of scope for a
+    # test-mode demo), mirrors how price is "locked in" at this same point.
+    product.stock_quantity -= quantity
+    db.add(product)
 
     if existing is not None:
         # idempotency_key is deterministic per (user, product) for the chat
@@ -228,8 +249,18 @@ def create_order_for_agent(
             return existing
         raise OrderError("duplicate_order", "This idempotency_key was already used for a different product")
 
-    # Re-read the current price server-side — never trust a price the agent claims.
-    amount_paise = product.price_paise * quantity
+    # Re-read stock server-side too — same rule as the buyer-chat path.
+    if product.stock_quantity < quantity:
+        raise OrderError(
+            "out_of_stock",
+            f"Only {product.stock_quantity} left in stock" if product.stock_quantity > 0 else "Out of stock",
+            data={"available_quantity": product.stock_quantity},
+        )
+
+    # Re-read the current price server-side — never trust a price the agent
+    # claims. Same campaign-discount lookup as the buyer-chat path, so an
+    # applied campaign is honored for external AI-buyer agents too.
+    amount_paise = get_effective_price(db, product) * quantity
 
     if amount_paise > agent_client.max_order_amount_paise:
         raise OrderError(
@@ -250,6 +281,9 @@ def create_order_for_agent(
     merchant = db.get(Merchant, agent_client.merchant_id)
     description = f"{product.name} — {merchant.name}" if merchant else product.name
     payment = create_razorpay_order(amount_paise, receipt=_new_reference_id(), description=description)
+
+    product.stock_quantity -= quantity
+    db.add(product)
 
     order = Order(
         user_id=None,  # no human buyer session — this order was placed by an external agent

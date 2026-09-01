@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models.conversation import Conversation, Message
 from app.models.merchant import Merchant
+from app.models.product import Product
 from app.services import catalog_service, llm_gateway
 from app.services.audit_service import log_audit
 from app.services.order_service import OrderError, check_payment_status, create_order_for_chat, list_orders_for_user
@@ -48,6 +49,7 @@ Handling how many results to show — be precise, not padded:
 - If the buyer states a size or weight (e.g. "1kg rice", "half kg dal"), match it against the search result whose variant_label equals that size — variant_group groups the different sizes of the same item. If the exact size isn't available, say what sizes are, instead of guessing or substituting silently.
 
 - After create_order succeeds, tell the buyer the order id and that you'll check payment status; call check_payment_status if asked or after creating the order.
+- If create_order's result includes related_products, you may mention up to 3 of them as an optional add-on suggestion (e.g. "Want to add a case for that too?") — but never call create_order for one of them without the buyer separately and explicitly confirming that specific item, exactly like any other purchase. Never add one silently.
 - If the buyer asks to see their orders, order history, or "what have I bought", call list_orders — never guess or claim you can't do it.
 - If create_order fails with duplicate_order or already_purchased, the tool result includes the existing order_id and razorpay_payment_link — use them directly instead of asking the buyer for an order id they never had and don't know. Never ask the buyer to supply an order_id you already have or could get via list_orders.
 - create_order, check_payment_status, and list_orders all return razorpay_payment_link for any order that's still created/pending. If the buyer asks for the payment link, to "checkout", to "drop the link", or how to pay, and you don't already have it in this conversation, call check_payment_status (or list_orders if you don't have the order_id either) to get it, then share the exact URL. Never say you don't have a payment link without first calling one of those tools — you very likely do.
@@ -364,7 +366,7 @@ def _product_was_shown(db: Session, conversation_id: uuid.UUID, product_id: str)
     )
     for row in rows:
         tc = row.tool_call or {}
-        if tc.get("name") not in ("search_catalog", "get_product_detail"):
+        if tc.get("name") not in ("search_catalog", "get_product_detail", "create_order"):
             continue
         result = tc.get("result")
         if result is None:
@@ -376,6 +378,11 @@ def _product_was_shown(db: Session, conversation_id: uuid.UUID, product_id: str)
         elif isinstance(result, dict) and result.get("product_id") == product_id:
             # get_product_detail result shape: {"product_id": ..., ...}
             return True
+        elif isinstance(result, dict) and isinstance(result.get("related_products"), list):
+            # create_order's upsell suggestions — a buyer confirming one of
+            # these afterward counts as having been "shown" it too.
+            if any(item.get("product_id") == product_id for item in result["related_products"] if isinstance(item, dict)):
+                return True
     return False
 
 
@@ -504,6 +511,30 @@ def _execute_tool(
             conversation_id=conversation.id,
             amount_paise=order.amount_paise,
         )
+
+        # Cross-sell: same-category, same-merchant products the buyer hasn't
+        # bought yet. Purely informational — the agent may mention these, but
+        # create_order still requires its own separate confirmation for any
+        # of them, so nothing here can turn into a purchase on its own.
+        ordered_product = db.get(Product, order.product_id)
+        if ordered_product is not None:
+            related = catalog_service.get_related_products(db, ordered_product, limit=3)
+            if related:
+                result["related_products"] = related
+                log_audit(
+                    db,
+                    action="upsell_suggested",
+                    outcome="success",
+                    reasoning="Suggested same-category products after a confirmed purchase",
+                    payload={
+                        "order_id": str(order.id),
+                        "base_product_id": str(ordered_product.id),
+                        "suggested_product_ids": [r["product_id"] for r in related],
+                    },
+                    user_id=user_id,
+                    conversation_id=conversation.id,
+                )
+
         return result
 
     if name == "check_payment_status":
