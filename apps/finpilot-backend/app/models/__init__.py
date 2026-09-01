@@ -9,3 +9,5 @@ from app.models.conversation import Conversation, Message  # noqa: F401
 from app.models.order import Order  # noqa: F401
 from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.cart_item import CartItem  # noqa: F401
+from app.models.campaign import Campaign  # noqa: F401
+from app.models.ad import AdWallet, AdWalletTopup, AdCampaign  # noqa: F401

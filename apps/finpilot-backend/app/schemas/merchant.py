@@ -8,6 +8,7 @@ class MerchantResponse(BaseModel):
     id: uuid.UUID
     name: str
     slug: str
+    sku_prefix: str
     razorpay_account_id: str | None = None
     created_at: datetime
 
