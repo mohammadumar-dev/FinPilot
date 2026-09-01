@@ -1646,22 +1646,22 @@ AGENT_CLIENTS = [
 ]
 
 USERS = [
-    {"email": "admin.datainn@gmail.com", "role": "buyer", "merchant_key": None},
-    {"email": "admin@stepforward.demo", "role": "merchant_admin", "merchant_key": "stepforward"},
-    {"email": "admin@threadline.demo", "role": "merchant_admin", "merchant_key": "threadline"},
-    {"email": "admin@circuithub.demo", "role": "merchant_admin", "merchant_key": "circuithub"},
-    {"email": "admin@novatech.demo", "role": "merchant_admin", "merchant_key": "novatech"},
-    {"email": "admin@pageturner.demo", "role": "merchant_admin", "merchant_key": "pageturner"},
-    {"email": "admin@greenbasket.demo", "role": "merchant_admin", "merchant_key": "greenbasket"},
-    {"email": "admin@homenest.demo", "role": "merchant_admin", "merchant_key": "homenest"},
-    {"email": "admin@glowup.demo", "role": "merchant_admin", "merchant_key": "glowup"},
-    {"email": "admin@sprintzone.demo", "role": "merchant_admin", "merchant_key": "sprintzone"},
-    {"email": "admin@tinytots.demo", "role": "merchant_admin", "merchant_key": "tinytots"},
-    {"email": "admin@pawpals.demo", "role": "merchant_admin", "merchant_key": "pawpals"},
-    {"email": "admin@kitchencraft.demo", "role": "merchant_admin", "merchant_key": "kitchencraft"},
-    {"email": "admin@autogear.demo", "role": "merchant_admin", "merchant_key": "autogear"},
-    {"email": "admin@aromahome.demo", "role": "merchant_admin", "merchant_key": "aromahome"},
-    {"email": "admin@urbanstyle.demo", "role": "merchant_admin", "merchant_key": "urbanstyle"},
+    {"email": "buyer.finpilot@example.com", "role": "buyer", "merchant_key": None},
+    {"email": "stepforward.finpilot@example.com", "role": "merchant_admin", "merchant_key": "stepforward"},
+    {"email": "threadline.finpilot@example.com", "role": "merchant_admin", "merchant_key": "threadline"},
+    {"email": "circuithub.finpilot@example.com", "role": "merchant_admin", "merchant_key": "circuithub"},
+    {"email": "novatech.finpilot@example.com", "role": "merchant_admin", "merchant_key": "novatech"},
+    {"email": "pageturner.finpilot@example.com", "role": "merchant_admin", "merchant_key": "pageturner"},
+    {"email": "greenbasket.finpilot@example.com", "role": "merchant_admin", "merchant_key": "greenbasket"},
+    {"email": "homenest.finpilot@example.com", "role": "merchant_admin", "merchant_key": "homenest"},
+    {"email": "glowup.finpilot@example.com", "role": "merchant_admin", "merchant_key": "glowup"},
+    {"email": "sprintzone.finpilot@example.com", "role": "merchant_admin", "merchant_key": "sprintzone"},
+    {"email": "tinytots.finpilot@example.com", "role": "merchant_admin", "merchant_key": "tinytots"},
+    {"email": "pawpals.finpilot@example.com", "role": "merchant_admin", "merchant_key": "pawpals"},
+    {"email": "kitchencraft.finpilot@example.com", "role": "merchant_admin", "merchant_key": "kitchencraft"},
+    {"email": "autogear.finpilot@example.com", "role": "merchant_admin", "merchant_key": "autogear"},
+    {"email": "aromahome.finpilot@example.com", "role": "merchant_admin", "merchant_key": "aromahome"},
+    {"email": "urbanstyle.finpilot@example.com", "role": "merchant_admin", "merchant_key": "urbanstyle"},
 ]
 
 

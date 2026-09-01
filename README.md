@@ -56,9 +56,9 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign in with the seeded demo buyer: `admin.datainn@gmail.com` / `Demo@1234`.
+Open [http://localhost:3000](http://localhost:3000) and sign in with the seeded demo buyer: `buyer.finpilot@example.com` / `Demo@1234`.
 
-For the merchant portal, go to [http://localhost:3000/merchant/login](http://localhost:3000/merchant/login) and sign in with a seeded merchant admin, e.g. `admin@stepforward.demo` / `Demo@1234`.
+For the merchant portal, go to [http://localhost:3000/merchant/login](http://localhost:3000/merchant/login) and sign in with a seeded merchant admin, e.g. `stepforward.finpilot@example.com` / `Demo@1234`.
 
 ## Deploying (Render)
 
