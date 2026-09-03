@@ -77,7 +77,7 @@ export default function MerchantsPage() {
               <Link
                 key={merchant.id}
                 href={`/dashboard/merchants/${merchant.slug}`}
-                className="surface-interactive group flex flex-col gap-4 p-5"
+                className="surface-interactive group flex flex-col gap-4 p-4 sm:p-5"
               >
                 <div className="flex items-start justify-between gap-3">
                   <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand ring-1 ring-brand/15">

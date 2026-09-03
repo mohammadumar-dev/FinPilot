@@ -33,15 +33,20 @@ export function PageBar({
   return (
     <header
       className={cn(
-        "flex h-(--header-height) shrink-0 items-center gap-2 border-b border-border/60 px-4 lg:px-6",
+        "flex h-(--header-height) shrink-0 items-center gap-1.5 border-b border-border/60 px-3 sm:gap-2 sm:px-4 lg:px-6",
         className
       )}
     >
-      <SidebarTrigger className="-ml-1" />
-      <Separator orientation="vertical" className="mx-1 h-4 data-vertical:self-auto" />
+      <SidebarTrigger className="-ml-1 shrink-0" />
+      <Separator
+        orientation="vertical"
+        className="mx-1 hidden h-4 data-vertical:self-auto sm:block"
+      />
       {leading}
-      <span className="truncate text-sm font-medium">{label}</span>
-      {children && <div className="ml-auto flex items-center gap-2">{children}</div>}
+      <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+      {children && (
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">{children}</div>
+      )}
     </header>
   );
 }
@@ -68,7 +73,7 @@ export function PageHeading({
     <div className={cn("flex flex-wrap items-end justify-between gap-x-6 gap-y-3", className)}>
       <div className="flex min-w-0 flex-col gap-1.5">
         {eyebrow && <span className="section-label">{eyebrow}</span>}
-        <h1 className="font-heading text-[1.75rem] leading-[1.15] tracking-tight text-balance">
+        <h1 className="font-heading text-[clamp(1.375rem,1.05rem+1.4vw,1.75rem)] leading-[1.15] tracking-tight text-balance">
           {title}
         </h1>
         {description && (
@@ -77,7 +82,9 @@ export function PageHeading({
           </p>
         )}
       </div>
-      {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+      {action && (
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">{action}</div>
+      )}
     </div>
   );
 }
@@ -100,7 +107,7 @@ export function PageBody({
     <div className="flex-1 overflow-y-auto">
       <div
         className={cn(
-          "mx-auto flex w-full flex-col gap-6 px-4 py-6 lg:px-8 lg:py-8",
+          "mx-auto flex w-full min-w-0 flex-col gap-5 px-3 py-5 sm:gap-6 sm:px-4 sm:py-6 lg:px-8 lg:py-8",
           width === "narrow" && "max-w-3xl",
           width === "default" && "max-w-5xl",
           width === "wide" && "max-w-7xl",

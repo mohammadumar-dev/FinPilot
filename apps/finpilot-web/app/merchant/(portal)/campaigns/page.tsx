@@ -48,6 +48,20 @@ function toDateInputValue(iso: string | null): string {
   return iso ? iso.slice(0, 10) : "";
 }
 
+/** `new Date("2026-09-02")` (no time component) is parsed as UTC midnight,
+ * not the merchant's local midnight — for anyone east of UTC that silently
+ * pushes "starts today" hours into the future (and "ends" a day cuts most
+ * of that day off instead of covering it). Appending a bare time-of-day
+ * with no `Z`/offset makes `Date` parse it in the browser's local timezone
+ * instead, so `.toISOString()` then converts *that* to the correct UTC
+ * instant. */
+function startOfDayLocalISO(dateInputValue: string): string {
+  return new Date(`${dateInputValue}T00:00:00`).toISOString();
+}
+function endOfDayLocalISO(dateInputValue: string): string {
+  return new Date(`${dateInputValue}T23:59:59.999`).toISOString();
+}
+
 // Access to this page is already gated one level up by app/merchant/layout.tsx
 // (redirects anyone who isn't a signed-in merchant_admin) — no in-page
 // access-check branch needed here.
@@ -123,8 +137,8 @@ export default function CampaignsPage() {
     setActingOn(campaignId);
     try {
       await applyCampaign(merchantId, campaignId, {
-        start_date: scheduleDates.start ? new Date(scheduleDates.start).toISOString() : null,
-        end_date: scheduleDates.end ? new Date(scheduleDates.end).toISOString() : null,
+        start_date: scheduleDates.start ? startOfDayLocalISO(scheduleDates.start) : null,
+        end_date: scheduleDates.end ? endOfDayLocalISO(scheduleDates.end) : null,
       });
       toast.success("Campaign is now live.");
       closeScheduling();
@@ -141,8 +155,8 @@ export default function CampaignsPage() {
     setActingOn(campaignId);
     try {
       await updateCampaignSchedule(merchantId, campaignId, {
-        start_date: scheduleDates.start ? new Date(scheduleDates.start).toISOString() : null,
-        end_date: scheduleDates.end ? new Date(scheduleDates.end).toISOString() : null,
+        start_date: scheduleDates.start ? startOfDayLocalISO(scheduleDates.start) : null,
+        end_date: scheduleDates.end ? endOfDayLocalISO(scheduleDates.end) : null,
       });
       toast.success("Schedule updated.");
       closeScheduling();
@@ -236,7 +250,7 @@ export default function CampaignsPage() {
                   const expired = isExpired(c);
                   const isScheduling = schedulingId === c.id;
                   return (
-                    <article key={c.id} className="surface flex flex-col gap-4 p-5">
+                    <article key={c.id} className="surface flex flex-col gap-4 p-4 sm:p-5">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="flex min-w-0 flex-col gap-1">
                           <div className="flex items-center gap-2">

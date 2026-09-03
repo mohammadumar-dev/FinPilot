@@ -30,7 +30,7 @@ export default function NotFound() {
 
         <div className="flex flex-col gap-2">
           <p className="numeric text-sm font-medium tracking-wide text-muted-foreground">404</p>
-          <h1 className="font-heading text-3xl italic tracking-tight">Page not found</h1>
+          <h1 className="font-heading text-[clamp(1.5rem,1.2rem+1.4vw,1.875rem)] italic tracking-tight">Page not found</h1>
           <p className="text-sm leading-relaxed text-balance text-muted-foreground">
             Nothing lives at this address — it may have moved, or the link was off. Let&apos;s get you
             back to somewhere real.

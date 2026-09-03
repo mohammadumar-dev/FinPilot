@@ -152,7 +152,7 @@ export default function AdsPage() {
             />
 
             {/* Wallet */}
-            <div className="surface flex flex-col gap-4 p-5">
+            <div className="surface flex flex-col gap-4 p-4 sm:p-5">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2.5">
                   <span className="flex size-9 items-center justify-center rounded-full bg-brand/15 text-brand">
@@ -216,7 +216,7 @@ export default function AdsPage() {
             </div>
 
             {/* Create campaign */}
-            <form onSubmit={handleCreateCampaign} className="surface flex flex-col gap-4 p-5">
+            <form onSubmit={handleCreateCampaign} className="surface flex flex-col gap-4 p-4 sm:p-5">
               <p className="text-sm font-medium">New sponsored placement</p>
               <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto]">
                 <div className="flex flex-col gap-1">
@@ -290,7 +290,7 @@ export default function AdsPage() {
                 {campaigns?.map((c) => (
                   <div
                     key={c.id}
-                    className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-5 py-4 last:border-b-0"
+                    className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-5 py-4 last:border-b-0"
                   >
                     <div className="flex min-w-0 flex-col gap-1">
                       <div className="flex items-center gap-2">

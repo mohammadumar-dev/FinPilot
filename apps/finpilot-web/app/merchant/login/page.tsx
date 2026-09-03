@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { StoreIcon } from "lucide-react";
+import { BookOpenIcon, StoreIcon } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
@@ -59,7 +60,7 @@ export default function MerchantLoginPage() {
             <StoreIcon className="size-6" />
           </span>
           <div className="flex flex-col gap-2">
-            <h1 className="font-heading text-3xl italic tracking-tight">FinPilot for Merchants</h1>
+            <h1 className="font-heading text-[clamp(1.375rem,1rem+1.7vw,1.875rem)] italic tracking-tight text-balance">FinPilot for Merchants</h1>
             <p className="text-sm leading-relaxed text-balance text-muted-foreground">
               Grow your revenue: propose discount campaigns from your own order history, and run
               sponsored placements — every action explainable, bounded, and logged.
@@ -67,7 +68,7 @@ export default function MerchantLoginPage() {
           </div>
         </div>
 
-        <div className="surface flex flex-col gap-5 p-6">
+        <div className="surface flex flex-col gap-5 p-4 sm:p-6">
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="email">Email</Label>
@@ -127,6 +128,16 @@ export default function MerchantLoginPage() {
             </div>
           </dl>
         </div>
+
+        {/* The docs page explains the whole system — reachable before sign-in,
+            since a reviewer landing here may not have credentials yet. */}
+        <Link
+          href="/docs"
+          className="-mt-4 inline-flex items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <BookOpenIcon className="size-3.5" />
+          Read the documentation
+        </Link>
       </div>
     </div>
   );

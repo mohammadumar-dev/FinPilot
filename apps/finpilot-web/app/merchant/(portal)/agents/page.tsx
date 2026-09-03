@@ -113,7 +113,7 @@ export default function AgentsPage() {
             />
 
             {justIssued && (
-              <div className="surface flex flex-col gap-3 border-2 border-brand/40 p-5">
+              <div className="surface flex flex-col gap-3 border-2 border-brand/40 p-4 sm:p-5">
                 <div className="flex items-center gap-2">
                   <KeyRoundIcon className="size-4 text-brand" />
                   <p className="text-sm font-medium">
@@ -135,7 +135,7 @@ export default function AgentsPage() {
               </div>
             )}
 
-            <form onSubmit={handleCreate} className="surface flex flex-col gap-4 p-5">
+            <form onSubmit={handleCreate} className="surface flex flex-col gap-4 p-4 sm:p-5">
               <p className="flex items-center gap-2 text-sm font-medium">
                 <PlusIcon className="size-4" />
                 Issue a new key
@@ -201,7 +201,7 @@ export default function AgentsPage() {
                 {clients.map((c) => (
                   <div
                     key={c.id}
-                    className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-5 py-4 last:border-b-0"
+                    className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-5 py-4 last:border-b-0"
                   >
                     <div className="flex min-w-0 flex-col gap-1">
                       <div className="flex items-center gap-2">

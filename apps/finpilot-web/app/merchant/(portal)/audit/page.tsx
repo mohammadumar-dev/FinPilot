@@ -52,7 +52,7 @@ export default function MerchantAuditPage() {
                 </EmptyHeader>
               </Empty>
             ) : (
-              <div className="surface p-5">
+              <div className="surface p-4 sm:p-5">
                 <AuditTrail entries={entries} />
               </div>
             )}

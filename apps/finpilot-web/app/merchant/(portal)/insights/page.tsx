@@ -22,13 +22,13 @@ function LedgerStrip({ entries }: { entries: { label: string; value: string }[] 
         <div
           key={entry.label}
           className={cn(
-            "flex flex-col gap-1.5 px-5 py-4",
+            "flex flex-col gap-1.5 px-4 sm:px-5 py-4",
             i < 2 && "border-b border-border/70 sm:border-b-0",
             i % 2 === 1 && "border-l border-border/70 sm:border-l-0"
           )}
         >
           <dt className="section-label">{entry.label}</dt>
-          <dd className="numeric text-2xl leading-none font-medium">{entry.value}</dd>
+          <dd className="numeric text-xl leading-none font-medium tabular-nums sm:text-2xl">{entry.value}</dd>
         </div>
       ))}
     </dl>
@@ -70,7 +70,7 @@ function DeltaBadge({ before, after }: { before: number; after: number }) {
 
 function CampaignImpactCard({ impact }: { impact: CampaignImpact }) {
   return (
-    <article className="surface flex flex-col gap-4 p-5">
+    <article className="surface flex flex-col gap-4 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{impact.product_names.join(", ")}</p>
@@ -81,15 +81,15 @@ function CampaignImpactCard({ impact }: { impact: CampaignImpact }) {
         </div>
         <CampaignStatusBadge status={impact.status} />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 sm:gap-4">
         <div className="flex flex-col gap-1 rounded-2xl bg-muted/50 p-3">
           <span className="text-[0.65rem] text-muted-foreground uppercase">Before</span>
-          <span className="numeric text-lg font-medium">₹{(impact.before.revenue_paise / 100).toLocaleString("en-IN")}</span>
+          <span className="numeric text-base font-medium tabular-nums sm:text-lg">₹{(impact.before.revenue_paise / 100).toLocaleString("en-IN")}</span>
           <span className="numeric text-xs text-muted-foreground">{impact.before.orders} order(s)</span>
         </div>
         <div className="flex flex-col gap-1 rounded-2xl bg-brand/[0.06] p-3">
           <span className="text-[0.65rem] text-muted-foreground uppercase">After</span>
-          <span className="numeric text-lg font-medium">₹{(impact.after.revenue_paise / 100).toLocaleString("en-IN")}</span>
+          <span className="numeric text-base font-medium tabular-nums sm:text-lg">₹{(impact.after.revenue_paise / 100).toLocaleString("en-IN")}</span>
           <span className="numeric text-xs text-muted-foreground">{impact.after.orders} order(s)</span>
         </div>
       </div>
@@ -101,7 +101,7 @@ function CampaignImpactCard({ impact }: { impact: CampaignImpact }) {
 function AdImpactRow({ impact }: { impact: AdImpact }) {
   const roi = impact.spend_paise > 0 ? impact.revenue_since_paise / impact.spend_paise : null;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-5 py-4 last:border-b-0">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-5 py-4 last:border-b-0">
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{impact.product_name}</span>
@@ -196,7 +196,7 @@ export default function InsightsPage() {
               ]}
             />
 
-            <div className="surface flex flex-col gap-4 p-5">
+            <div className="surface flex flex-col gap-4 p-4 sm:p-5">
               <p className="text-sm font-medium">Revenue — last 30 days</p>
               <RevenueTrendChart data={insights.trend} />
             </div>

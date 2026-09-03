@@ -34,7 +34,7 @@ function LedgerStrip({
         <div
           key={entry.label}
           className={cn(
-            "flex flex-col gap-1.5 px-5 py-4",
+            "flex flex-col gap-1.5 px-4 sm:px-5 py-4",
             i < 2 && "border-b border-border/70 sm:border-b-0",
             i % 2 === 1 && "border-l border-border/70 sm:border-l-0"
           )}
@@ -42,7 +42,7 @@ function LedgerStrip({
           <dt className="section-label">{entry.label}</dt>
           <dd
             className={cn(
-              "numeric text-2xl leading-none font-medium",
+              "numeric text-xl leading-none font-medium tabular-nums sm:text-2xl",
               entry.tone === "warning" && "text-warning"
             )}
           >
@@ -145,7 +145,7 @@ export default function MerchantDashboardPage() {
               ]}
             />
 
-            <div className="surface flex flex-col gap-4 p-5">
+            <div className="surface flex flex-col gap-4 p-4 sm:p-5">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Revenue — last 30 days</p>
                 <Link href="/merchant/insights" className="flex items-center gap-1 text-xs font-medium text-brand hover:underline">
@@ -202,7 +202,7 @@ export default function MerchantDashboardPage() {
 
             {recentOrders.length > 0 && (
               <div className="surface overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border/70 bg-muted/40 px-5 py-3">
+                <div className="flex items-center justify-between border-b border-border/70 bg-muted/40 px-4 sm:px-5 py-3">
                   <span className="section-label">Recent orders</span>
                   <Link href="/merchant/orders" className="text-xs font-medium text-brand hover:underline">
                     View all
@@ -211,7 +211,7 @@ export default function MerchantDashboardPage() {
                 {recentOrders.map((o) => (
                   <div
                     key={o.id}
-                    className="flex items-center justify-between gap-3 border-b border-border/60 px-5 py-3 text-sm last:border-b-0"
+                    className="flex items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-5 py-3 text-sm last:border-b-0"
                   >
                     <span className="min-w-0 flex-1 truncate">{productName(o.product_id)}</span>
                     <span className="numeric shrink-0 text-muted-foreground">
