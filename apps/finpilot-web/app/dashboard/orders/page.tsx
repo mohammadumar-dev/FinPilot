@@ -34,7 +34,7 @@ function LedgerStrip({
         <div
           key={entry.label}
           className={cn(
-            "flex flex-col gap-1.5 px-5 py-4",
+            "flex min-w-0 flex-col gap-1.5 px-3 py-4 sm:px-5",
             // 2-up on mobile needs its own rules; sm:divide-x handles wide.
             i < 2 && "border-b border-border/70 sm:border-b-0",
             i % 2 === 1 && "border-l border-border/70 sm:border-l-0"
@@ -43,7 +43,7 @@ function LedgerStrip({
           <dt className="section-label">{entry.label}</dt>
           <dd
             className={cn(
-              "numeric text-2xl leading-none font-medium",
+              "numeric text-xl leading-none font-medium tabular-nums sm:text-2xl",
               entry.tone === "warning" && "text-warning",
               entry.tone === "destructive" && "text-destructive"
             )}
@@ -63,7 +63,7 @@ function LedgerStrip({
  * Explicit track widths are what keep the columns honest.
  */
 const ORDER_GRID =
-  "md:grid-cols-[minmax(0,2.5fr)_minmax(0,1fr)_3rem_6rem_11rem_8.5rem]";
+  "lg:grid-cols-[minmax(0,2.5fr)_minmax(0,1fr)_3rem_6rem_11rem_8.5rem]";
 
 export default function OrdersPage() {
   return (
@@ -215,7 +215,7 @@ function OrdersPageContent() {
             <div className="surface overflow-hidden">
               <div
                 className={cn(
-                  "hidden items-center gap-4 border-b border-border/70 bg-muted/40 px-5 py-3 md:grid",
+                  "hidden items-center gap-4 border-b border-border/70 bg-muted/40 px-3 py-3 sm:px-5 lg:grid",
                   ORDER_GRID
                 )}
               >
@@ -247,17 +247,17 @@ function OrdersPageContent() {
                       aria-expanded={isExpanded}
                       onClick={() => toggleExpand(order)}
                       className={cn(
-                        "grid w-full grid-cols-2 items-center gap-x-4 gap-y-2 px-5 py-4 text-left transition-colors hover:bg-muted/40",
+                        "grid w-full grid-cols-2 items-center gap-x-4 gap-y-2 px-3 py-4 sm:px-5 text-left transition-colors hover:bg-muted/40",
                         ORDER_GRID
                       )}
                     >
-                      <span className="col-span-2 flex min-w-0 flex-col md:col-span-1">
+                      <span className="col-span-2 flex min-w-0 flex-col lg:col-span-1">
                         <span className="truncate text-sm font-medium">
                           {product?.name ?? "Unknown product"}
                         </span>
                         <span className="truncate text-xs text-muted-foreground">
                           {merchant?.name}
-                          <span className="md:hidden">
+                          <span className="lg:hidden">
                             {" · "}
                             {order.placed_by === "buyer_chat" ? "You, in chat" : "External agent"}
                             {order.quantity > 1 && ` · ×${order.quantity}`}
@@ -268,11 +268,11 @@ function OrdersPageContent() {
                       {/* Who placed it and how many are secondary on a phone —
                           they fold into the product line rather than each
                           taking a row of their own. */}
-                      <span className="hidden text-sm text-muted-foreground md:block">
+                      <span className="hidden text-sm text-muted-foreground lg:block">
                         {order.placed_by === "buyer_chat" ? "You, in chat" : "External agent"}
                       </span>
 
-                      <span className="numeric hidden text-right text-sm text-muted-foreground md:block">
+                      <span className="numeric hidden text-right text-sm text-muted-foreground lg:block">
                         ×{order.quantity}
                       </span>
 
@@ -304,7 +304,7 @@ function OrdersPageContent() {
                         )}
                       </span>
 
-                      <span className="col-span-2 flex items-center justify-end gap-3 md:col-span-1">
+                      <span className="col-span-2 flex items-center justify-end gap-3 lg:col-span-1">
                         <span
                           className="text-xs whitespace-nowrap text-muted-foreground"
                           title={new Date(order.created_at).toLocaleString()}
@@ -321,7 +321,7 @@ function OrdersPageContent() {
                     </button>
 
                     {isExpanded && (
-                      <div className="border-t border-border/60 bg-muted/30 px-5 py-4">
+                      <div className="border-t border-border/60 bg-muted/30 px-3 py-4 sm:px-5">
                         {auditLoading === order.id ? (
                           <div className="flex items-center justify-center py-6 text-muted-foreground">
                             <Spinner className="size-4" />

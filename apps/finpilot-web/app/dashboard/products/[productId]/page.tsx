@@ -93,7 +93,7 @@ export default function ProductDetailPage() {
                 {product.category && (
                   <span className="section-label">{product.category.replace(/-/g, " ")}</span>
                 )}
-                <h1 className="font-heading text-3xl leading-[1.15] tracking-tight text-balance">
+                <h1 className="font-heading text-[clamp(1.5rem,1.15rem+1.6vw,1.875rem)] leading-[1.15] tracking-tight text-balance">
                   {product.name}
                   {product.variant_label && (
                     <span className="ml-2 align-middle text-lg font-normal text-muted-foreground">
@@ -114,7 +114,7 @@ export default function ProductDetailPage() {
               {/* Price and the buy action read as one block — the decision point. */}
               <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-y border-border/70 py-5">
                 <span className="flex items-baseline gap-2">
-                  <span className="numeric text-3xl font-medium">
+                  <span className="numeric text-2xl font-medium tabular-nums sm:text-3xl">
                     ₹{product.price_rupees.toLocaleString("en-IN")}
                   </span>
                   {product.is_on_offer && product.original_price_rupees != null && (

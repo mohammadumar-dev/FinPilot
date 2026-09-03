@@ -223,7 +223,7 @@ export default function MerchantProductDetailPage() {
               }
             />
 
-            <div className="surface flex flex-col gap-4 p-5 sm:flex-row">
+            <div className="surface flex flex-col gap-4 p-4 sm:p-5 sm:flex-row">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -247,7 +247,7 @@ export default function MerchantProductDetailPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSave} className="surface flex flex-col gap-4 p-5">
+            <form onSubmit={handleSave} className="surface flex flex-col gap-4 p-4 sm:p-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="name">Name</Label>

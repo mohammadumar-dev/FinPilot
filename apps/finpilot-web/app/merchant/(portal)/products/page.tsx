@@ -191,7 +191,7 @@ export default function ProductsPage() {
             />
 
             {/* Create form */}
-            <form onSubmit={handleCreate} className="surface flex flex-col gap-4 p-5">
+            <form onSubmit={handleCreate} className="surface flex flex-col gap-4 p-4 sm:p-5">
               <p className="flex items-center gap-2 text-sm font-medium">
                 <PackagePlusIcon className="size-4" />
                 New product
@@ -337,7 +337,7 @@ export default function ProductsPage() {
                   return (
                     <div
                       key={p.id}
-                      className="flex flex-wrap items-center gap-4 border-b border-border/60 px-5 py-4 last:border-b-0"
+                      className="flex flex-wrap items-center gap-4 border-b border-border/60 px-4 sm:px-5 py-4 last:border-b-0"
                     >
                       <button
                         type="button"

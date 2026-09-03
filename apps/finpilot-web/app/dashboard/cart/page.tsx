@@ -230,7 +230,7 @@ export default function CartPage() {
 
             {/* Order summary — the money moment, so it carries the most weight
                 on the page and states exactly what checkout will do. */}
-            <div className="surface flex flex-col gap-4 p-5">
+            <div className="surface flex flex-col gap-4 p-4 sm:p-5">
               <div className="flex flex-col gap-2">
                 <div className="flex items-baseline justify-between gap-4 text-sm text-muted-foreground">
                   <span>
@@ -242,7 +242,7 @@ export default function CartPage() {
                 </div>
                 <div className="flex items-baseline justify-between gap-4 border-t border-border/70 pt-3">
                   <span className="text-sm font-medium">Total</span>
-                  <span className="numeric text-2xl font-medium">
+                  <span className="numeric text-xl font-medium tabular-nums sm:text-2xl">
                     ₹{(total / 100).toLocaleString("en-IN")}
                   </span>
                 </div>

@@ -24,7 +24,7 @@ function LedgerStrip({
         <div
           key={entry.label}
           className={cn(
-            "flex flex-col gap-1.5 px-5 py-4",
+            "flex flex-col gap-1.5 px-4 sm:px-5 py-4",
             i < 2 && "border-b border-border/70 sm:border-b-0",
             i % 2 === 1 && "border-l border-border/70 sm:border-l-0"
           )}
@@ -32,7 +32,7 @@ function LedgerStrip({
           <dt className="section-label">{entry.label}</dt>
           <dd
             className={cn(
-              "numeric text-2xl leading-none font-medium",
+              "numeric text-xl leading-none font-medium tabular-nums sm:text-2xl",
               entry.tone === "warning" && "text-warning",
               entry.tone === "destructive" && "text-destructive",
               entry.tone === "success" && "text-success"
@@ -138,7 +138,7 @@ export default function AccountsPage() {
 
             <div className="grid gap-4 lg:grid-cols-2">
               {/* Orders breakdown */}
-              <div className="surface flex flex-col gap-4 p-5">
+              <div className="surface flex flex-col gap-4 p-4 sm:p-5">
                 <div className="flex items-center justify-between">
                   <p className="flex items-center gap-2 text-sm font-medium">
                     <LandmarkIcon className="size-4" />
@@ -169,7 +169,7 @@ export default function AccountsPage() {
               </div>
 
               {/* Ad wallet */}
-              <div className="surface flex flex-col gap-4 p-5">
+              <div className="surface flex flex-col gap-4 p-4 sm:p-5">
                 <div className="flex items-center justify-between">
                   <p className="flex items-center gap-2 text-sm font-medium">
                     <WalletIcon className="size-4" />
@@ -214,7 +214,7 @@ export default function AccountsPage() {
             </div>
 
             {/* Campaigns summary */}
-            <div className="surface flex items-center justify-between p-5">
+            <div className="surface flex items-center justify-between p-4 sm:p-5">
               <div className="flex items-center gap-2.5">
                 <span className="flex size-9 items-center justify-center rounded-full bg-brand/15 text-brand">
                   <TargetIcon className="size-4" />
