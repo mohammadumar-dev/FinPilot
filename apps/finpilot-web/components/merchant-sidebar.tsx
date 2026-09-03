@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BookOpenIcon,
   BotIcon,
   LandmarkIcon,
   LayoutDashboardIcon,
@@ -127,6 +128,12 @@ export function MerchantSidebar({ ...props }: React.ComponentProps<typeof Sideba
             <SidebarMenuButton isActive={pathname === "/merchant/audit"} render={<Link href="/merchant/audit" />}>
               <ListChecksIcon />
               <span>Activity</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton isActive={pathname === "/docs"} render={<Link href="/docs" />}>
+              <BookOpenIcon />
+              <span>Docs</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

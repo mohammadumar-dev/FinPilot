@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { SparkleIcon } from "lucide-react";
+import { BookOpenIcon, SparkleIcon } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
@@ -14,7 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 export default function LoginPage() {
   const router = useRouter();
   const { user, loading, login } = useAuth();
-  const [email, setEmail] = React.useState("buyer.finpilot@example.com");
+  const [email, setEmail] = React.useState("buyer@finpilot.com");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
@@ -60,7 +61,7 @@ export default function LoginPage() {
             <SparkleIcon className="size-6" />
           </span>
           <div className="flex flex-col gap-2">
-            <h1 className="font-heading text-3xl italic tracking-tight">FinPilot</h1>
+            <h1 className="font-heading text-[clamp(1.5rem,1.2rem+1.4vw,1.875rem)] italic tracking-tight">FinPilot</h1>
             <p className="text-sm leading-relaxed text-balance text-muted-foreground">
               Tell it what you want and what you&apos;ll spend. It finds the best-rated option and
               buys it for you.
@@ -68,7 +69,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="surface flex flex-col gap-5 p-6">
+        <div className="surface flex flex-col gap-5 p-4 sm:p-6">
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="email">Email</Label>
@@ -122,7 +123,7 @@ export default function LoginPage() {
           <dl className="flex flex-col gap-1 text-xs">
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-muted-foreground">Email</dt>
-              <dd className="numeric">buyer.finpilot@example.com</dd>
+              <dd className="numeric">buyer@finpilot.com</dd>
             </div>
             <div className="flex items-baseline justify-between gap-3">
               <dt className="text-muted-foreground">Password</dt>
@@ -130,6 +131,16 @@ export default function LoginPage() {
             </div>
           </dl>
         </div>
+
+        {/* The docs page explains the whole system — reachable before sign-in,
+            since a reviewer landing here may not have credentials yet. */}
+        <Link
+          href="/docs"
+          className="-mt-4 inline-flex items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <BookOpenIcon className="size-3.5" />
+          Read the documentation
+        </Link>
       </div>
     </div>
   );

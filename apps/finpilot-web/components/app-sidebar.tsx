@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SparkleIcon, SquarePenIcon, PackageIcon, ShoppingCartIcon, StoreIcon } from "lucide-react";
+import { SparkleIcon, SquarePenIcon, PackageIcon, ShoppingCartIcon, StoreIcon, BookOpenIcon } from "lucide-react";
 
 import { useCart } from "@/lib/cart-context";
 import { NavUser } from "@/components/nav-user";
@@ -89,6 +89,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarMenuButton isActive={pathname === "/dashboard/orders"} render={<Link href="/dashboard/orders" />}>
               <PackageIcon />
               <span>Orders</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton isActive={pathname === "/docs"} render={<Link href="/docs" />}>
+              <BookOpenIcon />
+              <span>Docs</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
