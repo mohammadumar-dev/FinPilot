@@ -7,7 +7,7 @@ Seeds:
   - ~160 products across those merchants, incl. weight/size variants for
     grocery staples (rice, dal, oil, atta) grouped via variant_group
   - 1 agent_client per merchant, with a generated API key printed once to stdout
-  - 16 demo users (1 buyer, 15 merchant admins), all with password Demo@1234
+  - 17 demo users (2 buyers, 15 merchant admins), all with password Demo@1234
   - Product images: for any product whose SKU has a matching file in
     public/product-images/, converts it to WebP and stores it (see
     app/seed/images.py). Missing files just leave the product imageless.
@@ -1647,6 +1647,9 @@ AGENT_CLIENTS = [
 
 USERS = [
     {"email": "buyer.finpilot@example.com", "role": "buyer", "merchant_key": None},
+    # A second buyer with no conversations, cart or orders behind it — the
+    # clean slate to demo the first-run experience from.
+    {"email": "buyer@finpilot.com", "role": "buyer", "merchant_key": None},
     {"email": "stepforward.finpilot@example.com", "role": "merchant_admin", "merchant_key": "stepforward"},
     {"email": "threadline.finpilot@example.com", "role": "merchant_admin", "merchant_key": "threadline"},
     {"email": "circuithub.finpilot@example.com", "role": "merchant_admin", "merchant_key": "circuithub"},
