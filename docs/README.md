@@ -7,8 +7,7 @@ a standard [MCP](https://modelcontextprotocol.io) interface for any external AI 
 There's also an interactive version of most of this — with canvas diagrams and charts — at
 **`/docs`** in the running frontend (`apps/finpilot-web`).
 
-Built for the **Razorpay AI Buildathon — Track 1 (AI Growth & Agentic Commerce)**. The original
-product/architecture plan is [`../agent-to-agent-checkout-final-plan.md`](../agent-to-agent-checkout-final-plan.md).
+For setup and a project overview, start at the [root README](../README.md).
 
 ## Reading order
 

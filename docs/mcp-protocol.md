@@ -18,7 +18,8 @@ backend's services as a library, so it shares code, not a network call, with the
 - Requires `Authorization: Bearer <api_key>`. Missing/malformed → `401 {"error": "unauthorized"}`.
 - `app/mcp_server/auth.py`'s `resolve_agent_client(api_key)` loads every non-revoked
   `AgentClient` and bcrypt-verifies the key against each (`verify_api_key`) — bcrypt hashes can't
-  be looked up by equality, so this is a linear scan, acceptable at hackathon scale. On success it
+  be looked up by equality, so this is a linear scan — fine at the client counts this is built for,
+  but index a key prefix or cache the lookup before issuing many. On success it
   wraps the match into a frozen `AgentIdentity` dataclass and stores it in a `ContextVar`
   (`current_agent`), because MCP tool functions run outside FastAPI's DI system and can't take
   `Depends()`.

@@ -116,8 +116,9 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* Demo credentials are real, useful content on a buildathon demo —
-            worth showing plainly rather than hiding in a footnote. */}
+        {/* The seeded demo credentials are real, useful content for anyone
+            running this locally — worth showing plainly rather than hiding in
+            a footnote. */}
         <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-border px-4 py-3">
           <span className="section-label">Demo buyer</span>
           <dl className="flex flex-col gap-1 text-xs">
