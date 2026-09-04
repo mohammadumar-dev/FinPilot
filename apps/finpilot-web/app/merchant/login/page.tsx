@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpenIcon, StoreIcon } from "lucide-react";
+import { BookOpenIcon, SparkleIcon, StoreIcon } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
@@ -129,15 +129,25 @@ export default function MerchantLoginPage() {
           </dl>
         </div>
 
-        {/* The docs page explains the whole system — reachable before sign-in,
-            since a reviewer landing here may not have credentials yet. */}
-        <Link
-          href="/docs"
-          className="-mt-4 inline-flex items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <BookOpenIcon className="size-3.5" />
-          Read the documentation
-        </Link>
+        {/* Docs and the other portal, both reachable before sign-in — a
+            reviewer landing on the wrong side shouldn't have to guess the URL. */}
+        <div className="-mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+          <Link
+            href="/docs"
+            className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+          >
+            <BookOpenIcon className="size-3.5" />
+            Read the documentation
+          </Link>
+          <span aria-hidden className="hidden h-3 w-px bg-border sm:block" />
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+          >
+            <SparkleIcon className="size-3.5" />
+            Buyer sign-in
+          </Link>
+        </div>
       </div>
     </div>
   );
