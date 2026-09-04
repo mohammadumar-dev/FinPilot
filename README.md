@@ -7,6 +7,18 @@
 
 **An AI shopping agent that finds the best-rated option within your budget and buys it for you.**
 
+### ▶ [Try the live demo](https://finpilot-lake.vercel.app)
+
+| | |
+|---|---|
+| **Buyer app** | <https://finpilot-lake.vercel.app/login> — `buyer@finpilot.com` / `Demo@1234` |
+| **Merchant portal** | <https://finpilot-lake.vercel.app/merchant/login> — `stepforward.finpilot@example.com` / `Demo@1234` |
+| **Architecture walkthrough** | <https://finpilot-lake.vercel.app/docs> — no sign-in needed |
+| **Backend API reference** | <https://finpilot-dysk.onrender.com/docs> — live OpenAPI docs |
+
+Payments run in Razorpay **test mode**, so nothing charges a real card. The backend is on a free
+tier that sleeps when idle — the first request after a quiet spell can take up to a minute.
+
 FinPilot has two front doors onto the same commerce core: a chat UI for human buyers, and a
 standard [MCP](https://modelcontextprotocol.io) server for any external AI agent. Every purchase —
 whoever initiates it — is bounded by a spend envelope, gated behind an explicit confirmation, and
@@ -108,8 +120,9 @@ Brings up Postgres, the backend, the MCP server, and the frontend together. It r
 
 ## Documentation
 
-Full written reference lives in [`docs/`](./docs/README.md), and the running frontend serves an
-interactive version of most of it at `/docs`.
+Full written reference lives in [`docs/`](./docs/README.md). An interactive version of most of it —
+with diagrams and charts — is served at [`/docs`](https://finpilot-lake.vercel.app/docs), on the
+live demo and on any local run.
 
 | | |
 |---|---|
@@ -142,10 +155,15 @@ multi-provider LLM fallback chain (Groq, NVIDIA, OpenRouter, Gemini) — see
 
 ## Deploying
 
-[`render.yaml`](./render.yaml) is a [Render Blueprint](https://render.com/docs/blueprint-spec) that
-provisions managed Postgres, the backend, the MCP server, and the frontend in one pass, each from
-its own `Dockerfile`. See [`docs/deployment.md`](./docs/deployment.md) for the full walkthrough,
-including registering the Razorpay webhook and the caveats of free-tier hosting.
+The live demo runs the frontend on **Vercel** ([finpilot-lake.vercel.app](https://finpilot-lake.vercel.app))
+and the backend on **Render** ([finpilot-dysk.onrender.com](https://finpilot-dysk.onrender.com)),
+against a managed Postgres.
+
+You are not tied to either. [`render.yaml`](./render.yaml) is a
+[Render Blueprint](https://render.com/docs/blueprint-spec) that provisions Postgres, the backend,
+the MCP server, and the frontend in one pass from their own `Dockerfile`s; deploying the frontend to
+Vercel instead is a two-field setup. Both paths, plus the Razorpay webhook and the caveats of
+free-tier hosting, are in [`docs/deployment.md`](./docs/deployment.md).
 
 FinPilot is configured for Razorpay **test mode**. Do not point it at live payment credentials
 without reading [`docs/security.md`](./docs/security.md) first.

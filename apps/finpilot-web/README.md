@@ -4,6 +4,8 @@ The frontend for FinPilot: an AI shopping agent that finds the best-rated option
 
 This is the frontend half of the FinPilot monorepo — see [`../finpilot-backend`](../finpilot-backend/README.md) for the FastAPI backend, buyer-agent chat loop, Razorpay integration, and the Agent Checkout MCP server that lets external AI agents transact with the same merchant catalog. Start at the [root README](../../README.md) for the overall architecture.
 
+Live demo: <https://finpilot-lake.vercel.app>
+
 ## Features
 
 - **Chat shopping assistant** — tell it what you want and your budget; it searches the merchant's catalog, shows a ranked shortlist as inline product cards, and buys on explicit confirmation.

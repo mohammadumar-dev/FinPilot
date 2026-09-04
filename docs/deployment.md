@@ -1,5 +1,18 @@
 # Deployment
 
+## The live demo
+
+The reference deployment splits across two providers:
+
+| Piece | Where | URL |
+|---|---|---|
+| Frontend (buyer app, merchant portal, these docs) | Vercel | <https://finpilot-lake.vercel.app> |
+| Backend (Merchant Checkout Core) | Render | <https://finpilot-dysk.onrender.com> |
+| Postgres | Render managed | — |
+
+Nothing in the code depends on that split — it is one working example of the "Running it anywhere"
+section below, not a requirement.
+
 ## Local quick start
 
 The step-by-step local setup lives in the [root README](../README.md#quick-start) — Postgres,
@@ -43,12 +56,28 @@ This portability is deliberate, and it is the same principle the LLM layer follo
 interchangeable providers (see [`llm-gateway.md`](./llm-gateway.md)): a system that can only run
 in one place, or against one vendor, has made an availability decision on the operator's behalf.
 
-## Deploying to Render
+## Deploying the frontend to Vercel
+
+The frontend is a stock Next.js app, so Vercel needs almost no configuration:
+
+1. Import the repo in Vercel and set the **Root Directory** to `apps/finpilot-web`. Vercel detects
+   Next.js and fills in the build and install commands itself.
+2. Add one environment variable: `NEXT_PUBLIC_API_BASE_URL`, pointing at your deployed backend
+   (the live demo uses `https://finpilot-dysk.onrender.com`). It is read at build time and baked
+   into the client bundle, so changing it later needs a redeploy, not just a restart.
+3. Add the resulting Vercel URL to the backend's `CORS_ORIGINS`, or the browser will block every
+   API call.
+
+Vercel hosts only the frontend. The backend, the MCP server, and Postgres still need somewhere to
+run — Render below, or anything else that runs a container.
+
+## Deploying the backend to Render
 
 [`render.yaml`](../render.yaml) at the repo root is a
 [Render Blueprint](https://render.com/docs/blueprint-spec) that provisions all four pieces in one
 pass — managed Postgres, the backend, the MCP server, and the frontend — each from its own
-`Dockerfile`.
+`Dockerfile`. If you host the frontend on Vercel instead, delete the `finpilot-web` service from the
+blueprint; nothing else in the file depends on it.
 
 1. Push the repo to GitHub, then in the Render dashboard choose **New +** → **Blueprint** and point
    it at the repo.

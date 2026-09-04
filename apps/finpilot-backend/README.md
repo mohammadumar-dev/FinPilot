@@ -49,7 +49,8 @@ change them before deploying anywhere reachable — see [`../../SECURITY.md`](..
 uvicorn app.main:app --reload --port 8000
 ```
 
-Health check: `GET /health`. Interactive API docs: `/docs`.
+Health check: `GET /health`. Interactive API docs: `/docs` — the deployed instance serves them at
+<https://finpilot-dysk.onrender.com/docs>.
 
 To also serve the Agent Checkout MCP server for external agents (separate process):
 

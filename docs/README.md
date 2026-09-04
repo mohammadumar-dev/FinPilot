@@ -5,9 +5,11 @@ best-rated option within a budget and buys it, through a chat UI for human buyer
 a standard [MCP](https://modelcontextprotocol.io) interface for any external AI agent.
 
 There's also an interactive version of most of this — with canvas diagrams and charts — at
-**`/docs`** in the running frontend (`apps/finpilot-web`).
+**[`/docs`](https://finpilot-lake.vercel.app/docs)** on the live demo, and at `/docs` on any local
+run of the frontend.
 
-For setup and a project overview, start at the [root README](../README.md).
+For setup and a project overview, start at the [root README](../README.md). The live demo is at
+<https://finpilot-lake.vercel.app>.
 
 ## Reading order
 
