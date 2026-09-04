@@ -29,7 +29,7 @@ current_agent: ContextVar[AgentIdentity | None] = ContextVar("current_agent", de
 
 def resolve_agent_client(api_key: str) -> AgentIdentity | None:
     """Bcrypt-hashed keys can't be looked up by equality, so this checks the
-    (small, hackathon-scale) set of non-revoked clients one by one. A revoked
+    (small) set of non-revoked clients one by one. A revoked
     client is excluded here, so revocation fails closed immediately on the
     very next call — not just at initial connection time."""
     db = SessionLocal()

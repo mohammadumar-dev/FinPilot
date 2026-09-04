@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpenIcon, SparkleIcon } from "lucide-react";
+import { BookOpenIcon, SparkleIcon, StoreIcon } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
@@ -116,8 +116,9 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* Demo credentials are real, useful content on a buildathon demo —
-            worth showing plainly rather than hiding in a footnote. */}
+        {/* The seeded demo credentials are real, useful content for anyone
+            running this locally — worth showing plainly rather than hiding in
+            a footnote. */}
         <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-border px-4 py-3">
           <span className="section-label">Demo buyer</span>
           <dl className="flex flex-col gap-1 text-xs">
@@ -132,15 +133,25 @@ export default function LoginPage() {
           </dl>
         </div>
 
-        {/* The docs page explains the whole system — reachable before sign-in,
-            since a reviewer landing here may not have credentials yet. */}
-        <Link
-          href="/docs"
-          className="-mt-4 inline-flex items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <BookOpenIcon className="size-3.5" />
-          Read the documentation
-        </Link>
+        {/* Docs and the other portal, both reachable before sign-in — a
+            reviewer landing on the wrong side shouldn't have to guess the URL. */}
+        <div className="-mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+          <Link
+            href="/docs"
+            className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+          >
+            <BookOpenIcon className="size-3.5" />
+            Read the documentation
+          </Link>
+          <span aria-hidden className="hidden h-3 w-px bg-border sm:block" />
+          <Link
+            href="/merchant/login"
+            className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+          >
+            <StoreIcon className="size-3.5" />
+            Merchant sign-in
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -8,7 +8,7 @@ This is the backend half of the FinPilot monorepo — see `../finpilot-web` for 
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate          # .venv/bin/activate on macOS/Linux
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
@@ -33,10 +33,15 @@ python -m app.seed.seed_data
 ```
 
 The seed script is idempotent (safe to re-run) and creates:
-- 2 merchants — Threadline Apparel, CircuitHub Electronics
-- 10 products each (20 total)
-- 1 agent-client (scoped API key) per merchant, with spend/rate limits — the plaintext key is printed to stdout **once**, at creation
-- 3 users, all password `Demo@1234`: buyer `buyer.finpilot@example.com`, merchant admins `threadline.finpilot@example.com` / `circuithub.finpilot@example.com`
+- 15 merchants across distinct categories (apparel, electronics, groceries, books, pet supplies, …)
+- ~160 products spread across them
+- 1 agent-client (scoped API key) per merchant, with its own spend cap and daily rate limit — the plaintext key is printed to stdout **once**, at creation
+- 17 users, all with password `Demo@1234`: two buyers (`buyer.finpilot@example.com`, which has
+  order and chat history, and `buyer@finpilot.com`, a clean slate) plus one merchant admin per
+  merchant, e.g. `stepforward.finpilot@example.com`
+
+These accounts share a publicly known password and exist for local development only. Remove or
+change them before deploying anywhere reachable — see [`../../SECURITY.md`](../../SECURITY.md).
 
 ## Run
 
@@ -44,7 +49,8 @@ The seed script is idempotent (safe to re-run) and creates:
 uvicorn app.main:app --reload --port 8000
 ```
 
-Health check: `GET /health`. Interactive API docs: `/docs`.
+Health check: `GET /health`. Interactive API docs: `/docs` — the deployed instance serves them at
+<https://finpilot-dysk.onrender.com/docs>.
 
 To also serve the Agent Checkout MCP server for external agents (separate process):
 

@@ -148,7 +148,7 @@ export default function AgentsPage() {
                   <Input
                     id="name"
                     required
-                    placeholder="e.g. Claude Desktop, Judge Demo Agent"
+                    placeholder="e.g. Claude Desktop, Partner Bot"
                     value={form.name}
                     onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
                   />

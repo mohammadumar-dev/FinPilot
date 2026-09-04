@@ -157,7 +157,7 @@ export default function DocsPage() {
         <div ref={heroRef} className="relative mx-auto max-w-[1400px] px-4 py-12 sm:px-6 sm:py-16">
           <div data-reveal-item className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary" className="gap-1">
-              <SparkleIcon className="size-3" /> Razorpay AI Buildathon — Track 1
+              <SparkleIcon className="size-3" /> Open source · MIT
             </Badge>
             <Badge variant="outline">Agentic commerce</Badge>
           </div>

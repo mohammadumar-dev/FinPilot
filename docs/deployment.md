@@ -1,49 +1,23 @@
 # Deployment
 
+## The live demo
+
+The reference deployment splits across two providers:
+
+| Piece | Where | URL |
+|---|---|---|
+| Frontend (buyer app, merchant portal, these docs) | Vercel | <https://finpilot-lake.vercel.app> |
+| Backend (Merchant Checkout Core) | Render | <https://finpilot-dysk.onrender.com> |
+| Postgres | Render managed | — |
+
+Nothing in the code depends on that split — it is one working example of the "Running it anywhere"
+section below, not a requirement.
+
 ## Local quick start
 
-**1. Backend** (`apps/finpilot-backend`)
-
-```bash
-cd apps/finpilot-backend
-python -m venv .venv
-.venv\Scripts\activate          # .venv/bin/activate on macOS/Linux
-pip install -r requirements.txt
-```
-
-Create `.env` (see `.env.example`) with your Postgres connection string, a JWT secret, and your
-Groq / Razorpay keys. Then:
-
-```bash
-# create the database first if it doesn't exist, e.g.: CREATE DATABASE finpilot;
-alembic upgrade head
-python -m app.seed.seed_data
-uvicorn app.main:app --reload --port 8000
-```
-
-Optionally, run the MCP server for external agents (separate process, port 8100 by default):
-
-```bash
-python -m app.mcp_server.run
-```
-
-**2. Frontend** (`apps/finpilot-web`)
-
-```bash
-cd apps/finpilot-web
-echo NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 > .env.local
-npm install
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) and sign in with the demo buyer:
-`buyer@finpilot.com` / `Demo@1234`.
-
-For the merchant portal: [http://localhost:3000/merchant/login](http://localhost:3000/merchant/login),
-e.g. `stepforward.finpilot@example.com` / `Demo@1234`.
-
-**Local Docker check** (optional): `docker compose up --build` runs the whole stack locally via
-`docker-compose.yml` — requires `apps/finpilot-backend/.env` to already exist.
+The step-by-step local setup lives in the [root README](../README.md#quick-start) — Postgres,
+`alembic upgrade head`, the seed script, then `uvicorn` and `npm run dev`. `docker compose up
+--build` runs the whole stack instead, reading `apps/finpilot-backend/.env`.
 
 ## Running it anywhere
 
@@ -81,6 +55,50 @@ end up; those two values are the only place the deployment's own topology appear
 This portability is deliberate, and it is the same principle the LLM layer follows with its four
 interchangeable providers (see [`llm-gateway.md`](./llm-gateway.md)): a system that can only run
 in one place, or against one vendor, has made an availability decision on the operator's behalf.
+
+## Deploying the frontend to Vercel
+
+The frontend is a stock Next.js app, so Vercel needs almost no configuration:
+
+1. Import the repo in Vercel and set the **Root Directory** to `apps/finpilot-web`. Vercel detects
+   Next.js and fills in the build and install commands itself.
+2. Add one environment variable: `NEXT_PUBLIC_API_BASE_URL`, pointing at your deployed backend
+   (the live demo uses `https://finpilot-dysk.onrender.com`). It is read at build time and baked
+   into the client bundle, so changing it later needs a redeploy, not just a restart.
+3. Add the resulting Vercel URL to the backend's `CORS_ORIGINS`, or the browser will block every
+   API call.
+
+Vercel hosts only the frontend. The backend, the MCP server, and Postgres still need somewhere to
+run — Render below, or anything else that runs a container.
+
+## Deploying the backend to Render
+
+[`render.yaml`](../render.yaml) at the repo root is a
+[Render Blueprint](https://render.com/docs/blueprint-spec) that provisions all four pieces in one
+pass — managed Postgres, the backend, the MCP server, and the frontend — each from its own
+`Dockerfile`. If you host the frontend on Vercel instead, delete the `finpilot-web` service from the
+blueprint; nothing else in the file depends on it.
+
+1. Push the repo to GitHub, then in the Render dashboard choose **New +** → **Blueprint** and point
+   it at the repo.
+2. Render prompts for the secrets marked `sync: false`: at least one LLM provider key (Groq,
+   NVIDIA, OpenRouter, Gemini — any combination) and your Razorpay test-mode key and secret. Leave
+   `RAZORPAY_WEBHOOK_SECRET` blank for now.
+3. Once `finpilot-backend` is live, open a **Shell** on it and seed the catalog:
+   `python -m app.seed.seed_data`. Migrations have already run — they are in the backend image's
+   `CMD`.
+4. Register the payment webhook as described under "Running it anywhere" above, then paste the
+   signing secret Razorpay gives you into `RAZORPAY_WEBHOOK_SECRET` on the backend service.
+5. `render.yaml` hardcodes each service's URL into the others' `CORS_ORIGINS` and
+   `NEXT_PUBLIC_API_BASE_URL`. That is correct only if you keep the default service names and no
+   custom domain — otherwise update both values in the dashboard, since Blueprint edits apply only
+   on the next sync.
+6. Product photos are not seeded on a fresh deploy: `apps/finpilot-backend/public/product-images/`
+   is gitignored, so the build never has them. Missing images degrade to a placeholder — upload real
+   photos per product from `/merchant/products` instead.
+
+Free-tier Render services spin down after 15 minutes idle and free Postgres expires after 30 days.
+Fine for a demo, not for anything that needs to stay up.
 
 ## Environment variables (backend)
 

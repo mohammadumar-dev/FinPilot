@@ -39,7 +39,7 @@ than a full signed-mandate protocol.
 - Generated as `fp_live_<32-byte urlsafe token>`, shown once at creation, stored only as a
   bcrypt hash (same `pwd_context` used for user passwords).
 - Verified per-request by `resolve_agent_client` (`mcp_server/auth.py`) — a linear bcrypt-verify
-  scan over non-revoked clients (acceptable at hackathon scale) — and exposed to MCP tool
+  scan over non-revoked clients, fine at this scale — and exposed to MCP tool
   functions via a `ContextVar`, since MCP tools run outside FastAPI's request-scoped DI.
 - Revocation (`POST /merchant/{merchant_id}/agent-clients/{id}/revoke`) sets `revoked: true`,
   excluded immediately from the resolver's candidate query — **fails closed on the very next
